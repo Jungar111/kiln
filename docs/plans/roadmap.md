@@ -76,20 +76,24 @@ Shipped in the bootstrap commit. Artefacts: `.mise.toml`, `justfile`, `.pre-comm
 
 **Tickets:** [`70-repl-panel`](./tickets/70-repl-panel.md) → [`71-experiment-vs-inspection-enforcement`](./tickets/71-experiment-vs-inspection-enforcement.md) → [`72-drift-detector`](./tickets/72-drift-detector.md)
 
+## Phase 9 — Release plumbing (deferred)
+
+**Goal.** Cut tagged releases without ceremony: a single `just release` bumps versions across `package.json` / Rust / Tauri / Python in lockstep, regenerates `CHANGELOG.md`, tags, and pushes; the tag triggers a matrix CI build that produces signed `.dmg` / `.msi` / `.AppImage` and attaches them to a GitHub release. Stays in plan but is not blocking on the MVP — the MVP ships value before installers.
+
+**Tickets:** [`80-pyinstaller-sidecar`](./tickets/80-pyinstaller-sidecar.md) → [`81-tauri-action-release`](./tickets/81-tauri-action-release.md) → [`82-cocogitto-versioning`](./tickets/82-cocogitto-versioning.md)
+
 ---
 
 ## Dependency graph
 
 ```
-Phase 0 ──▶ Phase 1 ──▶ Phase 2 ──▶ Phase 3 ──┬──▶ Phase 4
+Phase 0 ──▶ Phase 1 ──▶ Phase 2 ──▶ Phase 3 ──┬──▶ Phase 4 ──▶ Phase 7
+                                              │           │
+                                              │           └──▶ Phase 8
                                               │
                                               └──▶ Phase 5 ──▶ Phase 6
-                                                             ▲
-                                                             │
-Phase 4 ─────────────────────────────────────────────────────┘
-                                                             │
-Phase 4 ──▶ Phase 7 ◀────────────────────────────────────────┘
-Phase 4 ──▶ Phase 8
+
+Phase 9 ◀── (Phases 1-8 must be feature-complete enough to ship)
 ```
 
 - Phases 1 → 2 → 3 are strictly sequential.
@@ -97,6 +101,7 @@ Phase 4 ──▶ Phase 8
 - Phase 6 depends on Phase 5's MIME-routing plumbing.
 - Phase 7 depends on Phase 4's tag-writing.
 - Phase 8 depends on Phase 4's checkpoint object.
+- Phase 9 is **deferred**: it does not block any earlier ticket and is picked up only when an installable build becomes the next concrete user need.
 
 ---
 
