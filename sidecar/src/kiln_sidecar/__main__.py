@@ -19,12 +19,15 @@ def main() -> int:
         code = params.get("code")
         if not isinstance(code, str):
             raise ValueError("`code` must be a string")
-        result = executor.run(code)
+        ephemeral_raw = params.get("ephemeral", False)
+        ephemeral = ephemeral_raw if isinstance(ephemeral_raw, bool) else False
+        result = executor.run(code, ephemeral=ephemeral)
         return {
             "status": result.status,
             "stdout": result.stdout,
             "value": result.value,
             "traceback": result.traceback,
+            "ephemeral": result.ephemeral,
         }
 
     dispatcher.register("execute", execute)

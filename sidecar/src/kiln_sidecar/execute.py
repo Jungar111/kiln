@@ -23,6 +23,9 @@ class ExecuteResult:
     stdout: str
     value: str | None
     traceback: str | None
+    # Marks human REPL pokes (inspection) vs Claude's logged actions (experiment).
+    # Purely informational here; ticket 71 turns it into MLflow-autolog suppression.
+    ephemeral: bool
 
 
 class Executor:
@@ -31,7 +34,7 @@ class Executor:
     def __init__(self, kernel: Kernel) -> None:
         self._kernel = kernel
 
-    def run(self, code: str) -> ExecuteResult:
+    def run(self, code: str, *, ephemeral: bool = False) -> ExecuteResult:
         manager = self._kernel.require_manager()
         client = manager.client()
         client.start_channels()
@@ -88,6 +91,7 @@ class Executor:
                 stdout=stdout_buf.getvalue(),
                 value=value,
                 traceback=traceback,
+                ephemeral=ephemeral,
             )
         finally:
             client.stop_channels()
