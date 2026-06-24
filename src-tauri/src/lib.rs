@@ -1,4 +1,5 @@
 pub mod sidecar;
+pub mod sidecar_client;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]

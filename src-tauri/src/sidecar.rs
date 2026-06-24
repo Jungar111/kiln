@@ -27,6 +27,14 @@ impl Sidecar {
         Ok(Self { child })
     }
 
+    pub fn take_stdin(&mut self) -> Option<tokio::process::ChildStdin> {
+        self.child.stdin.take()
+    }
+
+    pub fn take_stdout(&mut self) -> Option<tokio::process::ChildStdout> {
+        self.child.stdout.take()
+    }
+
     pub async fn shutdown(mut self) -> Result<(), SidecarError> {
         self.child.kill().await?;
         Ok(())
