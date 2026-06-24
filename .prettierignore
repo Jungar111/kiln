@@ -1,0 +1,9 @@
+pnpm-lock.yaml
+node_modules
+build
+dist
+.svelte-kit
+src-tauri/target
+src-tauri/gen
+sidecar
+docs/plans

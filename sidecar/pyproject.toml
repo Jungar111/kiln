@@ -1,0 +1,79 @@
+[project]
+name = "kiln-sidecar"
+version = "0.1.0"
+description = "Python sidecar for Kiln: IPython kernel + MLflow + Arrow IPC server."
+authors = [
+    { name = "Asger Sturis Tang", email = "asger@tang.dk" },
+]
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.scripts]
+kiln-sidecar = "kiln_sidecar.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "ty>=0.0.18",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format. Enforces the "treat Python as strongly typed" policy.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Selected rule families:
+#   E,F,W   pycodestyle / pyflakes
+#   I       isort
+#   B       flake8-bugbear
+#   UP      pyupgrade
+#   N       pep8-naming
+#   SIM     flake8-simplify
+#   RUF     ruff-specific (includes RUF100 — banning unused noqa)
+#   ANN     flake8-annotations — requires annotations on every function
+#   PGH     pygrep-hooks — flags blanket `# type: ignore` (PGH003), eval (PGH001)
+#   TCH     flake8-type-checking
+#   S       flake8-bandit (security)
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "ANN", "PGH", "TCH", "S"]
+# We do not relax type rules anywhere. If a tool wants to escape, it must
+# justify the escape in code review, not in this config.
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-annotations]
+# Disallow `Any` in annotations.
+allow-star-arg-any = false
+suppress-dummy-args = false
+mypy-init-return = false
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use `assert` (S101) — that's the whole point.
+"tests/**" = ["S101"]
+
+# ---------------------------------------------------------------------------
+# ty — Astral's Rust type checker.
+#
+# ty does not yet expose a `strict = true` knob; tracked at
+# https://github.com/astral-sh/ty. The escape hatches (`# type: ignore`,
+# `# ty: ignore`, `# noqa`) are forbidden by `pygrep` hooks in
+# .pre-commit-config.yaml — see CLAUDE.md.
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.terminal]
+error-on-warning = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

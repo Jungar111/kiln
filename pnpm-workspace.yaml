@@ -1,0 +1,5 @@
+# pnpm 11 emits ERR_PNPM_IGNORED_BUILDS unless dependencies that ship
+# install scripts are explicitly allowed here.
+
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,120 @@
+# prek (Rust drop-in for pre-commit) reads this file.
+# Install: `just hooks-install`. Run on demand: `just hooks-run`.
+
+repos:
+  # --- generic hygiene ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=512]
+
+  # --- secrets scan (public repo — do not disable) ---
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  # --- python (sidecar) ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.18
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^sidecar/
+      - id: ruff-format
+        files: ^sidecar/
+
+  # ty runs as a local hook so we can scope it to the sidecar/ project
+  # (the upstream ty-pre-commit hook assumes a single-package repo).
+  # `mise exec --` makes the hook PATH-agnostic so it works the same way
+  # whether prek is invoked from the shell or from a git pre-commit hook.
+  - repo: local
+    hooks:
+      - id: ty
+        name: 'ty (type check sidecar)'
+        language: system
+        entry: mise exec -- uv run --directory sidecar ty check
+        files: ^sidecar/.*\.py$
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+
+  # --- no escape hatches (mirrors CLAUDE.md policy) ---
+  - repo: local
+    hooks:
+      - id: ban-py-noqa
+        name: 'ban noqa escapes in python'
+        language: pygrep
+        entry: '#\s*noqa'
+        files: ^sidecar/.*\.py$
+
+      - id: ban-py-type-ignore
+        name: 'ban type-ignore escapes in python'
+        language: pygrep
+        entry: '#\s*type:\s*ignore'
+        files: ^sidecar/.*\.py$
+
+      - id: ban-py-pyright-ignore
+        name: 'ban pyright-ignore / ty-ignore in python'
+        language: pygrep
+        entry: '#\s*(pyright|ty):\s*ignore'
+        files: ^sidecar/.*\.py$
+
+      - id: ban-ts-escapes
+        name: 'ban @ts-ignore / @ts-nocheck / eslint-disable'
+        language: pygrep
+        entry: '@ts-(ignore|nocheck|expect-error)|eslint-disable'
+        files: \.(ts|tsx|js|jsx|svelte)$
+        # eslint.config.js is the file that *configures* the ban; it may
+        # legitimately mention these tokens in comments / rule values.
+        exclude: ^(node_modules/|build/|dist/|\.svelte-kit/|src-tauri/(target|gen)/|eslint\.config\.js$)
+
+  # --- rust (src-tauri) ---
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        language: system
+        entry: mise exec -- cargo fmt --manifest-path src-tauri/Cargo.toml --
+        files: ^src-tauri/.*\.rs$
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        language: system
+        entry: mise exec -- cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+        files: ^src-tauri/.*\.(rs|toml)$
+        pass_filenames: false
+
+      - id: eslint
+        name: eslint (--max-warnings 0)
+        language: system
+        entry: mise exec -- pnpm exec eslint --max-warnings 0
+        files: \.(ts|tsx|js|jsx|svelte)$
+        exclude: ^(node_modules/|build/|dist/|\.svelte-kit/|src-tauri/(target|gen)/|sidecar/|docs/)
+        pass_filenames: false
+
+      - id: svelte-check
+        name: svelte-check (--fail-on-warnings)
+        language: system
+        entry: mise exec -- pnpm check
+        files: \.(ts|tsx|js|jsx|svelte|html)$
+        exclude: ^(node_modules/|build/|dist/|\.svelte-kit/|src-tauri/(target|gen)/|sidecar/|docs/)
+        pass_filenames: false
+
+  # --- web (svelte/ts/js/json/md/yaml) ---
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        additional_dependencies:
+          - prettier@3.3.3
+          - prettier-plugin-svelte@3.2.6
+        types_or: [svelte, ts, javascript, json, yaml, markdown, css, html]
+        exclude: ^(pnpm-lock\.yaml|src-tauri/gen/|build/|dist/|\.svelte-kit/)

@@ -1,0 +1,14 @@
+[tools]
+python = "3.12"
+node   = "lts"
+rust   = "stable"
+uv     = "latest"
+just   = "latest"
+prek   = "latest"
+
+# pnpm is managed via Corepack (shipped with Node).
+# Run `just bootstrap` once to activate it from the version pinned in
+# package.json's `packageManager` field.
+
+[settings]
+experimental = true
