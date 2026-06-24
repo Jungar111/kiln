@@ -34,7 +34,7 @@ impl std::fmt::Display for RpcError {
 
 impl std::error::Error for RpcError {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ExecuteResponse {
     pub status: String,
     pub stdout: String,
