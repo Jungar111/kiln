@@ -1,20 +1,21 @@
-"""Sidecar entrypoint.
-
-Real implementation lands in the Phase 1 tickets (see
-docs/plans/tickets/). This stub exists so `uv run kiln-sidecar` succeeds
-during dev-env verification.
-"""
+"""Kiln sidecar entrypoint — line-delimited JSON-RPC 2.0 loop over stdio."""
 
 from __future__ import annotations
 
 import sys
 
+from kiln_sidecar.rpc import Dispatcher
+
 
 def main() -> int:
-    print(
-        "kiln-sidecar: stub. Replace in ticket 11 (sidecar bootstrap).",
-        file=sys.stderr,
-    )
+    dispatcher = Dispatcher()
+    for line in sys.stdin:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        sys.stdout.write(dispatcher.handle(stripped))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
     return 0
 
 
