@@ -7,9 +7,34 @@ ever sees our typed surface — the upstream API is broad and untyped.
 
 from __future__ import annotations
 
-from typing import Final, Protocol, cast
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from jupyter_client.manager import KernelManager
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+
+class _KernelClientProtocol(Protocol):
+    """Describes the subset of KernelClient we actually call in Executor.
+
+    KernelClient ships without complete py.typed stubs. This Protocol pins
+    exactly what Executor needs so ty can check our call sites.
+    """
+
+    def start_channels(self) -> None: ...
+
+    def stop_channels(self) -> None: ...
+
+    def wait_for_ready(self, timeout: float | None = None) -> None: ...
+
+    def execute_interactive(
+        self,
+        code: str,
+        *,
+        output_hook: Callable[[dict[str, object]], None],
+        timeout: float,
+    ) -> Mapping[str, object]: ...
 
 
 class _KernelManagerProtocol(Protocol):
@@ -27,6 +52,8 @@ class _KernelManagerProtocol(Protocol):
     def is_alive(self) -> bool: ...
 
     def shutdown_kernel(self, *, now: bool) -> None: ...
+
+    def client(self) -> _KernelClientProtocol: ...
 
 
 class Kernel:
@@ -51,6 +78,12 @@ class Kernel:
     def is_alive(self) -> bool:
         """Return True if the kernel subprocess is running."""
         return self._manager is not None and self._manager.is_alive()
+
+    def require_manager(self) -> _KernelManagerProtocol:
+        """Return the manager or raise if the kernel has not been started."""
+        if self._manager is None:
+            raise RuntimeError("kernel is not started")
+        return self._manager
 
     def shutdown(self) -> None:
         """Terminate the kernel subprocess immediately. No-op if not running."""
