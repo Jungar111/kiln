@@ -6,7 +6,14 @@ authors = [
     { name = "Asger Sturis Tang", email = "asger@tang.dk" },
 ]
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "ipykernel>=6.30",
+    "jupyter_client>=8.6",
+    "pyzmq>=26",
+    "mlflow>=3.0,<4",
+    "pyarrow>=18,<22",
+    "pydantic>=2.9",
+]
 
 [project.scripts]
 kiln-sidecar = "kiln_sidecar.__main__:main"
