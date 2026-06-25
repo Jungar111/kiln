@@ -57,6 +57,7 @@
 {#if ckpt.pending}
   <PremiseGate
     proposal={ckpt.pending}
+    drift={ckpt.drift}
     onapprove={(proposal: ProposeExperiment) => {
       void approve(proposal);
     }}
