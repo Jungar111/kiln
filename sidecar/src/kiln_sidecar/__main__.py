@@ -52,12 +52,21 @@ def main() -> int:
         ephemeral_raw = params.get("ephemeral", False)
         ephemeral = ephemeral_raw if isinstance(ephemeral_raw, bool) else False
         result = executor.run(code, ephemeral=ephemeral)
+        df: JsonValue = None
+        if result.df is not None:
+            df = {
+                "handle": result.df.handle,
+                "rows": result.df.rows,
+                "cols": result.df.cols,
+                "schema": list(result.df.schema),
+            }
         return {
             "status": result.status,
             "stdout": result.stdout,
             "value": result.value,
             "traceback": result.traceback,
             "ephemeral": result.ephemeral,
+            "df": df,
         }
 
     def approve_checkpoint(params: dict[str, JsonValue]) -> JsonValue:

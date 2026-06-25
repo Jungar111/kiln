@@ -1,22 +1,28 @@
-"""Local-only Arrow Flight server.
+"""Local-only HTTP server that streams DataFrame pages as Arrow IPC.
 
-The webview opens a gRPC client to this port and streams DataFrame
-pages directly — bytes never travel through the Rust IPC control plane.
+The webview `fetch()`es ``/page`` and ``/summary`` and decodes the Arrow IPC
+bytes with ``apache-arrow``; the bytes never travel through the Rust IPC control
+plane (spec's hard rule). We serve Arrow over plain localhost HTTP rather than
+Flight/gRPC because a Tauri webview cannot speak gRPC without a much heavier
+client.
 
-`pyarrow.flight` ships without complete py.typed stubs, so the few upstream
-call sites are pinned behind narrow Protocols and a single ``cast`` at
-construction time (the same pattern ``kernel.py`` uses for ``jupyter_client``).
+The server lives inside the *kernel* process (see ``df_display``): that is where
+the DataFrames are registered, so it can serve their bytes with no extra copy.
 """
 
 from __future__ import annotations
 
+import json
 import secrets
 import threading
 from dataclasses import dataclass
-from typing import Protocol, cast
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import TYPE_CHECKING
 
-import pyarrow as pa
-import pyarrow.flight as fl
+from kiln_sidecar.df_pages import page_table, summarise, to_ipc
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,16 +31,12 @@ class FrameHandle:
 
     id: str
 
-    def encode(self) -> bytes:
-        return self.id.encode("utf-8")
-
 
 class FrameRegistry:
     """Thread-safe side store mapping handles to Arrow tables.
 
-    The display hook (ticket 41) registers frames here; the Flight server and
-    the HTTP page server (ticket 42) read them back out. Eviction is out of MVP
-    scope — frames live for the process lifetime.
+    The display hook (ticket 41) registers frames here; the HTTP server reads
+    them back. Eviction is out of MVP scope — frames live for the process.
     """
 
     def __init__(self) -> None:
@@ -52,65 +54,88 @@ class FrameRegistry:
             return self._frames.get(handle)
 
 
-class _FlightServerProtocol(Protocol):
-    """The subset of FlightServerBase we drive after construction."""
+def _make_handler(registry: FrameRegistry) -> type[BaseHTTPRequestHandler]:
+    """Build a request handler closed over `registry` (no global state)."""
 
-    @property
-    def port(self) -> int: ...
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: object) -> None:
+            # Silence the default stderr access log; the sidecar drains stderr.
+            # `format` matches the base signature (BaseHTTPRequestHandler).
+            del format, args
 
-    def serve(self) -> None: ...
+        def do_POST(self) -> None:
+            length = int(self.headers.get("content-length", "0") or "0")
+            raw = self.rfile.read(length)
+            try:
+                loaded: object = json.loads(raw)
+            except json.JSONDecodeError:
+                self._fail(400, "invalid JSON body")
+                return
+            if not isinstance(loaded, dict):
+                self._fail(400, "body must be a JSON object")
+                return
+            handle = loaded.get("handle")
+            if not isinstance(handle, str):
+                self._fail(400, "missing handle")
+                return
+            table = registry.get(handle)
+            if table is None:
+                self._fail(404, f"unknown handle: {handle}")
+                return
 
-    def shutdown(self) -> None: ...
+            if self.path.startswith("/page"):
+                offset_raw = loaded.get("offset", 0)
+                limit_raw = loaded.get("limit", 1000)
+                sort_by_raw = loaded.get("sortBy")
+                sort_dir_raw = loaded.get("sortDir", "asc")
+                offset = offset_raw if isinstance(offset_raw, int) else 0
+                limit = limit_raw if isinstance(limit_raw, int) else 1000
+                sort_by = sort_by_raw if isinstance(sort_by_raw, str) else None
+                sort_dir = sort_dir_raw if isinstance(sort_dir_raw, str) else "asc"
+                self._ok(to_ipc(page_table(table, offset, limit, sort_by, sort_dir)))
+            elif self.path.startswith("/summary"):
+                self._ok(to_ipc(summarise(table)))
+            else:
+                self._fail(404, "not found")
 
-    def wait(self) -> None: ...
+        def _ok(self, payload: bytes) -> None:
+            self.send_response(200)
+            self.send_header("content-type", "application/vnd.apache.arrow.stream")
+            self.send_header("content-length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
 
+        def _fail(self, code: int, message: str) -> None:
+            body = message.encode("utf-8")
+            self.send_response(code)
+            self.send_header("content-type", "text/plain")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
-class _FlightServer(fl.FlightServerBase):
-    def __init__(self, location: str, registry: FrameRegistry) -> None:
-        super().__init__(location)
-        self._registry = registry
-
-    def do_get(
-        self,
-        context: fl.ServerCallContext,
-        ticket: fl.Ticket,
-    ) -> fl.RecordBatchStream:
-        handle = ticket.ticket.decode("utf-8")
-        table = self._registry.get(handle)
-        if table is None:
-            raise fl.FlightServerError(f"unknown handle: {handle}")
-        return fl.RecordBatchStream(table)
+    return Handler
 
 
 class ArrowServer:
-    """Owns the lifecycle of the local Flight server on a background thread."""
+    """Owns the lifecycle of the local HTTP server on a background thread."""
 
     def __init__(self, registry: FrameRegistry, host: str, port: int) -> None:
         self.registry = registry
-        self._location = f"grpc+tcp://{host}:{port}"
-        self._server: _FlightServerProtocol | None = None
+        self._http = ThreadingHTTPServer((host, port), _make_handler(registry))
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        # cast: FlightServerBase exposes port/serve/shutdown/wait at runtime; the
-        # missing attributes are an upstream stubs gap, not a real API gap.
-        server = cast("_FlightServerProtocol", _FlightServer(self._location, self.registry))
-        thread = threading.Thread(target=server.serve, daemon=True)
+        thread = threading.Thread(target=self._http.serve_forever, daemon=True)
         thread.start()
-        self._server = server
         self._thread = thread
 
     @property
     def port(self) -> int:
-        if self._server is None:
-            raise RuntimeError("arrow server is not started")
-        return self._server.port
+        return self._http.server_address[1]
 
     def shutdown(self) -> None:
-        if self._server is not None:
-            self._server.shutdown()
-            self._server.wait()
-            self._server = None
+        self._http.shutdown()
+        self._http.server_close()
         if self._thread is not None:
             self._thread.join(timeout=5.0)
             self._thread = None
