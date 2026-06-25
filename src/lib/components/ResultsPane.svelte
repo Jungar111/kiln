@@ -1,14 +1,18 @@
 <script lang="ts">
   import { createRunsStore } from '$lib/runs-store.svelte';
+  import { dfStore } from '$lib/df-store.svelte';
   import RunsList from './RunsList.svelte';
   import CompareView from './CompareView.svelte';
+  import DataFrameView from './DataFrameView.svelte';
+
+  type Tab = 'dataframe' | 'plot' | 'runs';
+  let tab = $state<Tab>('runs');
 
   const store = createRunsStore();
   let error = $state<string | null>(null);
-
   const selectedRuns = $derived(store.runs.filter((run) => store.selected.has(run.run_id)));
 
-  async function load(): Promise<void> {
+  async function loadRuns(): Promise<void> {
     try {
       await store.refresh();
       error = null;
@@ -17,25 +21,44 @@
     }
   }
 
-  // Load once when the pane mounts; the sidecar may not be ready yet, hence the
-  // error capture above and the manual refresh button.
-  void load();
+  void loadRuns();
 </script>
 
 <div class="results">
-  <header>
-    <h2>Runs</h2>
-    <button
-      type="button"
-      onclick={() => {
-        void load();
-      }}>refresh</button
+  <nav class="tabs">
+    <button class:active={tab === 'dataframe'} type="button" onclick={() => (tab = 'dataframe')}
+      >DataFrame</button
     >
-  </header>
-  {#if error}<p class="error">{error}</p>{/if}
-  <RunsList runs={store.runs} selected={store.selected} />
-  {#if selectedRuns.length > 0}
-    <CompareView runs={selectedRuns} />
+    <button class:active={tab === 'plot'} type="button" onclick={() => (tab = 'plot')}>Plot</button>
+    <button class:active={tab === 'runs'} type="button" onclick={() => (tab = 'runs')}>Runs</button>
+  </nav>
+
+  {#if tab === 'dataframe'}
+    {#if dfStore.current}
+      <DataFrameView handle={dfStore.current.handle} rows={dfStore.current.rows} />
+    {:else}
+      <p class="empty">Run a cell that returns a DataFrame to explore it here.</p>
+    {/if}
+  {:else if tab === 'plot'}
+    <!-- Phase 6 mounts its PlotPanel here when its branch merges. -->
+    <p class="empty">Plots will appear here.</p>
+  {:else}
+    <div class="runs-tab">
+      <header>
+        <h2>Runs</h2>
+        <button
+          type="button"
+          onclick={() => {
+            void loadRuns();
+          }}>refresh</button
+        >
+      </header>
+      {#if error}<p class="empty">{error}</p>{/if}
+      <RunsList runs={store.runs} selected={store.selected} />
+      {#if selectedRuns.length > 0}
+        <CompareView runs={selectedRuns} />
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -45,6 +68,31 @@
     flex-direction: column;
     gap: 8px;
     height: 100%;
+    min-height: 0;
+  }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  .tabs button {
+    background: transparent;
+    color: #999;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 4px 10px;
+    cursor: pointer;
+    font: inherit;
+  }
+  .tabs button.active {
+    color: #e6e6e6;
+    border-bottom-color: #9ad;
+  }
+  .runs-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
   }
   header {
     display: flex;
@@ -53,8 +101,9 @@
   }
   h2 {
     margin: 0;
+    font-size: 16px;
   }
-  button {
+  header button {
     background: #2a2a2a;
     color: #e6e6e6;
     border: 1px solid #333;
@@ -62,9 +111,8 @@
     padding: 4px 12px;
     cursor: pointer;
   }
-  .error {
-    color: #e0866f;
-    font-size: 12px;
-    margin: 0;
+  .empty {
+    color: #777;
+    font-size: 13px;
   }
 </style>

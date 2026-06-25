@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
+  import { dfStore, type DfHandle } from '$lib/df-store.svelte';
 
   // Mirrors `ExecuteResponse` in `src-tauri/src/sidecar_client.rs`. Every line
   // typed here runs with `ephemeral: true` so the poke never lands in the run.
@@ -9,6 +10,7 @@
     readonly value: string | null;
     readonly traceback: string | null;
     readonly ephemeral: boolean;
+    readonly df: DfHandle | null;
   };
 
   type Entry = { readonly id: number; readonly code: string; readonly response: ExecuteResponse };
@@ -28,6 +30,8 @@
     running = true;
     try {
       const response = await invoke<ExecuteResponse>('execute', { code, ephemeral: true });
+      // A DataFrame poke surfaces in the Results pane's DataFrame tab.
+      if (response.df !== null) dfStore.set(response.df);
       history = [...history, { id: nextId++, code, response }];
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -42,6 +46,7 @@
             value: null,
             traceback: message,
             ephemeral: true,
+            df: null,
           },
         },
       ];
