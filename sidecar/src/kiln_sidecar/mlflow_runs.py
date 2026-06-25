@@ -32,6 +32,13 @@ def _slots(proposal: ProposeExperiment) -> dict[str, Slot]:
 
 def start_run_with_decisions(proposal: ProposeExperiment) -> str:
     """Open an MLflow run, tag it with the declared decisions, return its id."""
+    # Install the autolog gate (Ticket 71) so any ephemeral cell run while this
+    # run is open is excluded from autolog. Idempotent — safe to call per
+    # approval. The kernel installs the same gate in its own process via the
+    # execute preamble; this call covers the sidecar process for defense in depth.
+    from kiln_sidecar.autolog_gate import install_autolog_gate
+
+    install_autolog_gate()
     run = mlflow.start_run(run_name=proposal.title)
     run_id: str = run.info.run_id
     mlflow.set_tag("kiln.title", proposal.title)

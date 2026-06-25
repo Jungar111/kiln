@@ -43,10 +43,31 @@ class ExecuteResult:
     value: str | None
     traceback: str | None
     # Marks human REPL pokes (inspection) vs Claude's logged actions (experiment).
-    # Purely informational here; ticket 71 turns it into MLflow-autolog suppression.
+    # Ticket 71: ephemeral cells run with MLflow autolog suppressed in the kernel.
     ephemeral: bool
     # Present when the cell evaluated to a DataFrame (the display hook fired).
     df: DfHandle | None = None
+
+
+# Prepended to every cell so the MLflow autolog gate is installed *in the kernel*
+# (where autolog patches and `.fit` actually run) and the per-cell ephemeral flag
+# is set before the user's code runs. The gate install is idempotent and cheap
+# after the first call. Each cell sets the flag explicitly — ephemeral cells set
+# True, normal cells set False — so no reset statement is needed (which keeps the
+# user's trailing expression as the last top-level statement, preserving the
+# `execute_result` value IPython echoes). The setup lines run before the user
+# code; a literal newline then re-establishes column 0 for the user's first line.
+_PREAMBLE_TEMPLATE: Final[str] = (
+    "import kiln_sidecar.autolog_gate as _kiln_gate\n"
+    "_kiln_gate.install_autolog_gate()\n"
+    "_kiln_gate.is_ephemeral.set({ephemeral})\n"
+    "del _kiln_gate\n"
+)
+
+
+def _with_ephemeral_preamble(code: str, *, ephemeral: bool) -> str:
+    """Inject the autolog-gate setup + per-cell ephemeral flag ahead of `code`."""
+    return _PREAMBLE_TEMPLATE.format(ephemeral=ephemeral) + code
 
 
 class Executor:
@@ -59,6 +80,7 @@ class Executor:
         manager = self._kernel.require_manager()
         client = manager.client()
         client.start_channels()
+        code = _with_ephemeral_preamble(code, ephemeral=ephemeral)
         try:
             # wait_for_ready blocks until the kernel's ZMQ channels are fully
             # initialised and the kernel_info_reply handshake is complete.

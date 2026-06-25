@@ -1,11 +1,15 @@
 <script lang="ts">
   import type { Verdict } from '$lib/checkpoint-types';
+  import InspectionRepl from './InspectionRepl.svelte';
 
   let { runId, onpick }: { runId: string; onpick: (verdict: Verdict) => void } = $props();
 </script>
 
 <div class="results-gate" role="group" aria-label="Results gate">
   <span class="label">Run <code>{runId.slice(0, 8)}</code> — keep, kill, or iterate?</span>
+  <!-- Same inspection surface as the premise gate: poke the kernel before the
+       keep/kill/iterate call. Ephemeral — nothing lands in the run record. -->
+  <InspectionRepl />
   <div class="actions">
     <button
       type="button"
@@ -37,13 +41,14 @@
     bottom: 16px;
     left: 50%;
     transform: translateX(-50%);
+    width: min(560px, 92vw);
     display: flex;
-    align-items: center;
-    gap: 14px;
+    flex-direction: column;
+    gap: 12px;
     background: #161616;
     border: 1px solid #333;
     border-radius: 10px;
-    padding: 10px 16px;
+    padding: 12px 16px;
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
     z-index: 9;
     color: #e6e6e6;
