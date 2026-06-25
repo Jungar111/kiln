@@ -27,6 +27,10 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
     "ty>=0.0.18",
+    # polars is an *optional* runtime target of the DataFrame display hook. We
+    # pin it as a dev dep so the polars code path is type-checked and tested;
+    # production users who only use pandas need not install it.
+    "polars>=1.0",
 ]
 
 # ---------------------------------------------------------------------------

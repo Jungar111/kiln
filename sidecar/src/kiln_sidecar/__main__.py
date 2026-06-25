@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from kiln_sidecar.arrow_server import ArrowServer, FrameRegistry
 from kiln_sidecar.execute import Executor
 from kiln_sidecar.kernel import Kernel
 from kiln_sidecar.rpc import Dispatcher, JsonValue
@@ -17,16 +16,34 @@ def main() -> int:
     kernel.start()
     executor = Executor(kernel)
 
-    # Local-only Arrow Flight server. DataFrames stream from here straight to the
-    # webview — their bytes never cross the Rust IPC control plane.
-    registry = FrameRegistry()
-    arrow_server = ArrowServer(registry, host="127.0.0.1", port=0)
-    arrow_server.start()
+    # Install the DataFrame display hook INSIDE the kernel process. jupyter_client
+    # runs the kernel as a separate subprocess, so DataFrames live in the kernel's
+    # memory — the Arrow server that serves their bytes must run there too. The
+    # hook starts that server lazily; arrow_port() reports its port back here.
+    install = executor.run(
+        "import kiln_sidecar.df_display as _kiln_dfd; _kiln_dfd.install()",
+        ephemeral=True,
+    )
+    if install.status != "ok":
+        sys.stderr.write(f"df_display hook failed to install: {install.traceback}\n")
+        sys.stderr.flush()
 
     dispatcher = Dispatcher()
 
     def arrow_port(_: dict[str, JsonValue]) -> JsonValue:
-        return {"port": arrow_server.port}
+        # Ask the kernel for its Arrow server port. The port is printed and read
+        # back from stdout so it crosses our existing execute roundtrip — no new
+        # control channel. Bytes of DataFrames never travel this path.
+        probe = executor.run(
+            "import kiln_sidecar.df_display as _kiln_dfd; print(_kiln_dfd.arrow_port())",
+            ephemeral=True,
+        )
+        port_text = probe.stdout.strip()
+        if probe.status != "ok" or not port_text.isdigit():
+            raise RuntimeError(
+                f"could not read arrow_port from kernel: {probe.traceback or port_text}"
+            )
+        return {"port": int(port_text)}
 
     def execute(params: dict[str, JsonValue]) -> JsonValue:
         code = params.get("code")
@@ -85,7 +102,8 @@ def main() -> int:
             sys.stdout.write("\n")
             sys.stdout.flush()
     finally:
-        arrow_server.shutdown()
+        # The Arrow server lives in the kernel process, so killing the kernel
+        # tears it down with no separate shutdown needed.
         kernel.shutdown()
     return 0
 

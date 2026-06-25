@@ -8,6 +8,7 @@ the request/response shape of the JSON-RPC surface.
 from __future__ import annotations
 
 import io
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -15,6 +16,24 @@ if TYPE_CHECKING:
     from kiln_sidecar.kernel import Kernel
 
 Status = Literal["ok", "error"]
+
+# Custom MIME the df_display hook emits instead of the giant default HTML repr.
+# Kept in sync with kiln_sidecar.df_display.MIME.
+DF_MIME: Final[str] = "application/vnd.kiln.df+json"
+
+
+@dataclass(frozen=True, slots=True)
+class DfHandle:
+    """A lightweight pointer to a DataFrame registered in the Arrow server.
+
+    The bytes are paged directly over the local Arrow socket by the viewer;
+    only this handle crosses the control plane.
+    """
+
+    handle: str
+    rows: int
+    cols: int
+    schema: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +45,8 @@ class ExecuteResult:
     # Marks human REPL pokes (inspection) vs Claude's logged actions (experiment).
     # Purely informational here; ticket 71 turns it into MLflow-autolog suppression.
     ephemeral: bool
+    # Present when the cell evaluated to a DataFrame (the display hook fired).
+    df: DfHandle | None = None
 
 
 class Executor:
@@ -47,9 +68,10 @@ class Executor:
             stdout_buf = io.StringIO()
             value: str | None = None
             traceback: str | None = None
+            df: DfHandle | None = None
 
             def on_iopub(msg: dict[str, object]) -> None:
-                nonlocal value, traceback
+                nonlocal value, traceback, df
                 header = msg.get("header", {})
                 if not isinstance(header, dict):
                     return
@@ -61,12 +83,15 @@ class Executor:
                     text = content.get("text", "")
                     if isinstance(text, str):
                         stdout_buf.write(text)
-                elif msg_type == "execute_result":
+                elif msg_type in ("execute_result", "display_data"):
                     data = content.get("data", {})
                     if isinstance(data, dict):
                         plain = data.get("text/plain")
                         if isinstance(plain, str):
                             value = plain
+                        parsed = _parse_df_handle(data.get(DF_MIME))
+                        if parsed is not None:
+                            df = parsed
                 elif msg_type == "error":
                     tb = content.get("traceback", [])
                     if isinstance(tb, list):
@@ -92,6 +117,40 @@ class Executor:
                 value=value,
                 traceback=traceback,
                 ephemeral=ephemeral,
+                df=df,
             )
         finally:
             client.stop_channels()
+
+
+def _parse_df_handle(raw: object) -> DfHandle | None:
+    """Parse a kiln DataFrame handle payload from an iopub MIME bundle.
+
+    The display hook emits the payload as a JSON string under DF_MIME. Returns
+    None for anything that does not look like a well-formed handle, so a
+    malformed payload degrades to "no DataFrame" rather than raising.
+    """
+    if not isinstance(raw, str):
+        return None
+    try:
+        loaded: object = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    handle = loaded.get("kiln/handle")
+    rows = loaded.get("rows")
+    cols = loaded.get("cols")
+    schema = loaded.get("schema")
+    if not isinstance(handle, str) or not handle:
+        return None
+    if not isinstance(rows, int) or not isinstance(cols, int):
+        return None
+    if not isinstance(schema, list):
+        return None
+    return DfHandle(
+        handle=handle,
+        rows=rows,
+        cols=cols,
+        schema=tuple(str(col) for col in schema),
+    )
