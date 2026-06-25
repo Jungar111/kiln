@@ -15,7 +15,35 @@ def main() -> int:
     kernel = Kernel()
     kernel.start()
     executor = Executor(kernel)
+
+    # Install the DataFrame display hook INSIDE the kernel process. jupyter_client
+    # runs the kernel as a separate subprocess, so DataFrames live in the kernel's
+    # memory — the Arrow server that serves their bytes must run there too. The
+    # hook starts that server lazily; arrow_port() reports its port back here.
+    install = executor.run(
+        "import kiln_sidecar.df_display as _kiln_dfd; _kiln_dfd.install()",
+        ephemeral=True,
+    )
+    if install.status != "ok":
+        sys.stderr.write(f"df_display hook failed to install: {install.traceback}\n")
+        sys.stderr.flush()
+
     dispatcher = Dispatcher()
+
+    def arrow_port(_: dict[str, JsonValue]) -> JsonValue:
+        # Ask the kernel for its Arrow server port. The port is printed and read
+        # back from stdout so it crosses our existing execute roundtrip — no new
+        # control channel. Bytes of DataFrames never travel this path.
+        probe = executor.run(
+            "import kiln_sidecar.df_display as _kiln_dfd; print(_kiln_dfd.arrow_port())",
+            ephemeral=True,
+        )
+        port_text = probe.stdout.strip()
+        if probe.status != "ok" or not port_text.isdigit():
+            raise RuntimeError(
+                f"could not read arrow_port from kernel: {probe.traceback or port_text}"
+            )
+        return {"port": int(port_text)}
 
     def execute(params: dict[str, JsonValue]) -> JsonValue:
         code = params.get("code")
@@ -81,6 +109,7 @@ def main() -> int:
     dispatcher.register("approve_checkpoint", approve_checkpoint)
     dispatcher.register("close_run", close_run)
     dispatcher.register("list_runs", list_runs)
+    dispatcher.register("arrow_port", arrow_port)
     try:
         for line in sys.stdin:
             stripped = line.strip()
@@ -90,6 +119,8 @@ def main() -> int:
             sys.stdout.write("\n")
             sys.stdout.flush()
     finally:
+        # The Arrow server lives in the kernel process, so killing the kernel
+        # tears it down with no separate shutdown needed.
         kernel.shutdown()
     return 0
 
