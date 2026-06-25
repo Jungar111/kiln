@@ -47,3 +47,6 @@ mlflow.db
 .env
 .env.*
 !.env.example
+
+# Claude Code agent worktrees (isolated subagent workspaces)
+.claude/worktrees/

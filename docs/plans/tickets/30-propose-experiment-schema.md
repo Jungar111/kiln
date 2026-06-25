@@ -4,6 +4,19 @@
 **Depends on:** [22](./22-claude-client-stub.md)
 **Blocks:** [31](./31-slot-validation.md), [32](./32-premise-gate-ui.md)
 
+> **⚠️ Adapted for the Claude Code CLI.** Since Kiln drives Claude through the
+> CLI (not the API), there is no API request to embed a tool schema into. The
+> checkpoint is delivered like this instead: Kiln appends a system-prompt
+> instruction telling Claude to emit the proposal as a single fenced
+> ```` ```kiln-experiment ```` JSON block; `src-tauri/src/claude.rs` extracts and
+> deserializes that block into the `ProposeExperiment` Rust type, validates it
+> (Ticket 31), and fires a `checkpoint:proposed` Tauri event. The Rust type and
+> the Python Pydantic mirror remain the schema's source of truth (cross-language
+> contract test instead of a schemars golden snapshot). **`schemars` / the API
+> tool-array embedding (Step 3) is dropped.** A real MCP `propose_experiment`
+> tool server is the future upgrade that restores a hard tool boundary + a
+> re-prompt loop; the prompt-parse path is the lazy MVP with a known ceiling.
+
 ## Goal
 
 Define the **structured** input schema for the `propose_experiment` tool the model uses to propose an investigation. The schema is the spec's "checkpoint object" — the slots that turn "trust Claude to mention the train/test split" into "the split decision is a structural field that cannot be empty" (spec §4).

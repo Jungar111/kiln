@@ -4,6 +4,14 @@
 **Depends on:** [21](./21-chat-pane.md)
 **Blocks:** [30](./30-propose-experiment-schema.md)
 
+> **⚠️ Implemented via the Claude Code CLI, not the Anthropic API.** Kiln shells
+> out to `claude -p --output-format json` (prompt piped over stdin) instead of
+> POSTing to `api.anthropic.com`. Auth, tools, MCP, and project context come for
+> free from the user's Claude Code install — so there is no `reqwest`, no
+> `ANTHROPIC_API_KEY` plumbing, and no `.env.example`. The implementation lives
+> in `src-tauri/src/claude.rs::send()`. The sections below (reqwest client, API
+> key env var, model constant) are **superseded** — kept for historical context.
+
 ## Goal
 
 Replace the echo with a real Anthropic API call (model `claude-opus-4-7`). Streaming **not** required for this ticket — wait for the full message. The model gets a single tool: a stub `propose_experiment` that simply returns its args. Ticket 30 will replace the stub with the real schema.

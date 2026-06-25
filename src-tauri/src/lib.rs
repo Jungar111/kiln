@@ -1,3 +1,4 @@
+pub mod checkpoint;
 pub mod claude;
 pub mod commands;
 pub mod sidecar;
