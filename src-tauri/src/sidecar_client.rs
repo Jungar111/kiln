@@ -37,12 +37,24 @@ impl std::fmt::Display for RpcError {
 impl std::error::Error for RpcError {}
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct DfHandle {
+    pub handle: String,
+    pub rows: u64,
+    pub cols: u64,
+    pub schema: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ExecuteResponse {
     pub status: String,
     pub stdout: String,
     pub value: Option<String>,
     pub traceback: Option<String>,
     pub ephemeral: bool,
+    // Present when the cell evaluated to a DataFrame. Bytes are paged directly
+    // webview↔sidecar over Arrow IPC; only this handle crosses the Rust IPC.
+    #[serde(default)]
+    pub df: Option<DfHandle>,
 }
 
 /// Shared state guarded by a single Mutex to prevent races between
@@ -300,6 +312,20 @@ impl SidecarClient {
     pub async fn list_runs(&self, limit: u32) -> Result<serde_json::Value, RpcError> {
         self.call("list_runs", serde_json::json!({ "limit": limit }))
             .await
+    }
+
+    /// Port of the in-kernel Arrow HTTP server. The webview fetches DataFrame
+    /// pages directly from it — bytes never cross this control plane.
+    pub async fn arrow_port(&self) -> Result<u32, RpcError> {
+        let value = self.call("arrow_port", serde_json::json!({})).await?;
+        value
+            .get("port")
+            .and_then(serde_json::Value::as_u64)
+            .map(|port| port as u32)
+            .ok_or_else(|| RpcError {
+                code: -32700,
+                message: "arrow_port reply missing port".into(),
+            })
     }
 }
 

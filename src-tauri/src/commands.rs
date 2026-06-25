@@ -110,3 +110,12 @@ pub async fn list_runs(
             message: e.message,
         })
 }
+
+/// Report the in-kernel Arrow HTTP server port so the webview can page frames.
+#[tauri::command]
+pub async fn arrow_port(client: State<'_, SidecarClient>) -> Result<u32, ExecuteCommandError> {
+    client.arrow_port().await.map_err(|e| ExecuteCommandError {
+        code: e.code,
+        message: e.message,
+    })
+}
