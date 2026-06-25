@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Emitter as _, State};
 
 use crate::sidecar_client::{ExecuteResponse, SidecarClient};
 
@@ -34,7 +34,26 @@ pub async fn execute(
 
 /// Send the user's message to Claude via the Claude Code CLI and return the
 /// text reply. Auth, tools, MCP, and project context are handled by the CLI.
+///
+/// If Claude's reply carries a `kiln-experiment` proposal block, fire the
+/// premise gate: a valid proposal is emitted as `checkpoint:proposed`; an
+/// invalid one is surfaced in the chat so Claude can self-correct next turn.
 #[tauri::command]
-pub async fn chat(message: String) -> Result<String, String> {
-    crate::claude::send(&message).await
+pub async fn chat(message: String, app: AppHandle) -> Result<String, String> {
+    let raw = crate::claude::send(&message).await?;
+    let prose = crate::claude::strip_proposal_block(&raw);
+    match crate::claude::extract_proposal(&raw) {
+        None => Ok(raw),
+        Some(Ok(proposal)) => {
+            let _ = app.emit("checkpoint:proposed", &proposal);
+            Ok(if prose.is_empty() {
+                "Proposed an experiment — see the premise gate.".to_owned()
+            } else {
+                prose
+            })
+        }
+        Some(Err(errors)) => Ok(format!(
+            "{prose}\n\n⚠️ Proposal not gated — fix these slots: {errors}"
+        )),
+    }
 }
