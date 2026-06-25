@@ -2,9 +2,12 @@
   import ChatPane from './ChatPane.svelte';
   import CodeViewPane from './CodeViewPane.svelte';
   import ResultsPane from './ResultsPane.svelte';
+  import PremiseGate from './PremiseGate.svelte';
   import { createSidecarStatus } from '$lib/sidecar-status.svelte';
+  import { createCheckpointStore } from '$lib/checkpoint-store.svelte';
 
   const status = createSidecarStatus();
+  const ckpt = createCheckpointStore();
 </script>
 
 <div class="shell" data-status={status.value}>
@@ -15,6 +18,18 @@
     <section class="pane results"><ResultsPane /></section>
   </main>
 </div>
+
+{#if ckpt.pending}
+  <PremiseGate
+    proposal={ckpt.pending}
+    onapprove={() => {
+      ckpt.clear();
+    }}
+    ondecline={() => {
+      ckpt.clear();
+    }}
+  />
+{/if}
 
 <style>
   .shell {

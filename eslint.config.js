@@ -15,6 +15,8 @@ export default ts.config(
       'build/**',
       'dist/**',
       '.svelte-kit/**',
+      // Claude Code subagent worktrees are full repo copies; don't lint them.
+      '.claude/**',
       'src-tauri/**',
       'sidecar/**',
       'docs/**',
