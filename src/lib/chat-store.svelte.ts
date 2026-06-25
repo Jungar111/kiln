@@ -17,8 +17,15 @@ export function createChat(): Chat {
 
   async function send(content: string): Promise<void> {
     messages.push({ role: 'user', content });
-    const reply = await invoke<string>('chat', { message: content });
-    messages.push({ role: 'assistant', content: reply });
+    try {
+      const reply = await invoke<string>('chat', { message: content });
+      messages.push({ role: 'assistant', content: reply });
+    } catch (err) {
+      // The command can fail (claude not on PATH, CLI error). Surface it in the
+      // transcript rather than dropping it on the floor.
+      const detail = err instanceof Error ? err.message : String(err);
+      messages.push({ role: 'assistant', content: `⚠️ ${detail}` });
+    }
   }
 
   return {

@@ -32,8 +32,9 @@ pub async fn execute(
         })
 }
 
-/// Echo stub. Replaced by a real Claude call in Ticket 22.
+/// Send the user's message to Claude via the Claude Code CLI and return the
+/// text reply. Auth, tools, MCP, and project context are handled by the CLI.
 #[tauri::command]
-pub fn chat(message: String) -> String {
-    format!("you said: {message}")
+pub async fn chat(message: String) -> Result<String, String> {
+    crate::claude::send(&message).await
 }

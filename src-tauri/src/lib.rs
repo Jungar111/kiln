@@ -1,3 +1,4 @@
+pub mod claude;
 pub mod commands;
 pub mod sidecar;
 pub mod sidecar_client;
