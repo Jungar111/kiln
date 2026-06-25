@@ -57,7 +57,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::ping,
             commands::execute,
-            commands::chat
+            commands::chat,
+            commands::approve_checkpoint
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

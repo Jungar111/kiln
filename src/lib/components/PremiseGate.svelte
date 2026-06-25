@@ -8,7 +8,7 @@
     ondecline,
   }: {
     proposal: ProposeExperiment;
-    onapprove: () => void;
+    onapprove: (proposal: ProposeExperiment) => void;
     ondecline: () => void;
   } = $props();
 </script>
@@ -42,7 +42,13 @@
       <button type="button" class="ghost" disabled>show experiment code</button>
       <div class="spacer"></div>
       <button type="button" class="decline" onclick={ondecline}>decline</button>
-      <button type="button" class="approve" onclick={onapprove}>approve</button>
+      <button
+        type="button"
+        class="approve"
+        onclick={() => {
+          onapprove(proposal);
+        }}>approve</button
+      >
     </footer>
   </div>
 </div>

@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+
+use crate::checkpoint::ProposeExperiment;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -258,6 +260,28 @@ impl SidecarClient {
             code: -32700,
             message: e.to_string(),
         })
+    }
+
+    /// Persist the approved checkpoint's declared decisions as MLflow run tags
+    /// and return the new run id.
+    pub async fn approve_checkpoint(
+        &self,
+        proposal: &ProposeExperiment,
+    ) -> Result<String, RpcError> {
+        let value = self
+            .call(
+                "approve_checkpoint",
+                serde_json::json!({ "proposal": proposal }),
+            )
+            .await?;
+        value
+            .get("run_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| RpcError {
+                code: -32700,
+                message: "approve_checkpoint reply missing run_id".into(),
+            })
     }
 }
 

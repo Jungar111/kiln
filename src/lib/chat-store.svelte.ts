@@ -6,13 +6,11 @@ export type ChatMessage = { readonly role: ChatRole; readonly content: string };
 export type Chat = {
   readonly messages: readonly ChatMessage[];
   send(content: string): Promise<void>;
+  /** Append an assistant-side note (e.g. "Run started: …") without a Claude call. */
+  note(content: string): void;
 };
 
-/**
- * Reactive chat transcript backed by the `chat` Tauri command. State lives here
- * (not in the component) so messages survive component re-renders.
- */
-export function createChat(): Chat {
+function createChat(): Chat {
   const messages = $state<ChatMessage[]>([]);
 
   async function send(content: string): Promise<void> {
@@ -28,10 +26,21 @@ export function createChat(): Chat {
     }
   }
 
+  function note(content: string): void {
+    messages.push({ role: 'assistant', content });
+  }
+
   return {
     get messages() {
       return messages;
     },
     send,
+    note,
   };
 }
+
+/**
+ * One shared transcript for the whole app, so the premise gate can post run
+ * notes into the same conversation the Chat pane renders.
+ */
+export const chat: Chat = createChat();

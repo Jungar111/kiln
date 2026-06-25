@@ -57,3 +57,25 @@ pub async fn chat(message: String, app: AppHandle) -> Result<String, String> {
         )),
     }
 }
+
+#[derive(Debug, Serialize)]
+pub struct ApproveResponse {
+    pub run_id: String,
+}
+
+/// Approve a premise gate: forward the proposal to the sidecar, which opens an
+/// MLflow run tagged with the declared decisions, and return the run id.
+#[tauri::command]
+pub async fn approve_checkpoint(
+    proposal: crate::checkpoint::ProposeExperiment,
+    client: State<'_, SidecarClient>,
+) -> Result<ApproveResponse, ExecuteCommandError> {
+    let run_id = client
+        .approve_checkpoint(&proposal)
+        .await
+        .map_err(|e| ExecuteCommandError {
+            code: e.code,
+            message: e.message,
+        })?;
+    Ok(ApproveResponse { run_id })
+}

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { createChat } from '$lib/chat-store.svelte';
+  import { chat } from '$lib/chat-store.svelte';
 
-  const chat = createChat();
   let draft = $state('');
 
   async function submit(event: SubmitEvent): Promise<void> {

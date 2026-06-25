@@ -1,13 +1,27 @@
 <script lang="ts">
+  import { invoke } from '@tauri-apps/api/core';
   import ChatPane from './ChatPane.svelte';
   import CodeViewPane from './CodeViewPane.svelte';
   import ResultsPane from './ResultsPane.svelte';
   import PremiseGate from './PremiseGate.svelte';
   import { createSidecarStatus } from '$lib/sidecar-status.svelte';
   import { createCheckpointStore } from '$lib/checkpoint-store.svelte';
+  import { chat } from '$lib/chat-store.svelte';
+  import type { ProposeExperiment } from '$lib/checkpoint-types';
 
   const status = createSidecarStatus();
   const ckpt = createCheckpointStore();
+
+  async function approve(proposal: ProposeExperiment): Promise<void> {
+    try {
+      const { run_id } = await invoke<{ run_id: string }>('approve_checkpoint', { proposal });
+      chat.note(`Run started: ${run_id}`);
+    } catch (err) {
+      chat.note(`⚠️ Approve failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      ckpt.clear();
+    }
+  }
 </script>
 
 <div class="shell" data-status={status.value}>
@@ -22,8 +36,8 @@
 {#if ckpt.pending}
   <PremiseGate
     proposal={ckpt.pending}
-    onapprove={() => {
-      ckpt.clear();
+    onapprove={(proposal: ProposeExperiment) => {
+      void approve(proposal);
     }}
     ondecline={() => {
       ckpt.clear();
