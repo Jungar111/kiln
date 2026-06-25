@@ -52,7 +52,11 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![commands::ping, commands::execute])
+        .invoke_handler(tauri::generate_handler![
+            commands::ping,
+            commands::execute,
+            commands::chat
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

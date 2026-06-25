@@ -31,3 +31,9 @@ pub async fn execute(
             message: e.message,
         })
 }
+
+/// Echo stub. Replaced by a real Claude call in Ticket 22.
+#[tauri::command]
+pub fn chat(message: String) -> String {
+    format!("you said: {message}")
+}
