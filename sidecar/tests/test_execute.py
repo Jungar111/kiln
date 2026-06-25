@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kiln_sidecar.execute import ExecuteResult, Executor
+from kiln_sidecar.execute import Display, ExecuteResult, Executor
 from kiln_sidecar.kernel import Kernel
 
 if TYPE_CHECKING:
@@ -25,7 +25,12 @@ def executor() -> Iterator[Executor]:
 def test_expression_returns_value(executor: Executor) -> None:
     result = executor.run("1 + 1")
     assert result == ExecuteResult(
-        status="ok", stdout="", value="2", traceback=None, ephemeral=False
+        status="ok",
+        stdout="",
+        value="2",
+        traceback=None,
+        ephemeral=False,
+        displays=[Display(mime="text/plain", payload="2", metadata={})],
     )
 
 
@@ -83,6 +88,53 @@ def test_non_dataframe_value_has_no_handle(executor: Executor) -> None:
     result = executor.run("1 + 1")
     assert result.df is None
     assert result.value == "2"
+
+
+def test_matplotlib_emits_png_display(executor: Executor) -> None:
+    # The inline backend is what a notebook/Kiln kernel uses; it registers the
+    # PNG formatter so a figure echoes as image/png. (The pure-file `Agg`
+    # backend has no rich repr and would emit only text/plain.)
+    setup = executor.run(
+        "import matplotlib; matplotlib.use('module://matplotlib_inline.backend_inline')",
+        ephemeral=True,
+    )
+    assert setup.status == "ok", setup.traceback
+    result = executor.run("import matplotlib.pyplot as plt; plt.plot([1, 2, 3]); plt.gcf()")
+    assert result.status == "ok", result.traceback
+    assert any(d.mime == "image/png" for d in result.displays)
+
+
+def test_plotly_emits_html_display(executor: Executor) -> None:
+    # Outside a live notebook frontend, plotly defaults to its vendor mimetype
+    # renderer (application/vnd.plotly.v1+json). The "notebook" renderer emits a
+    # self-contained text/html bundle — exactly what the plot panel's sandboxed
+    # iframe renders. A Kiln kernel selects this at boot for the same reason.
+    setup = executor.run(
+        "import plotly.io as pio; pio.renderers.default = 'notebook'",
+        ephemeral=True,
+    )
+    assert setup.status == "ok", setup.traceback
+    result = executor.run(
+        "import plotly.express as px\nfig = px.scatter(x=[1, 2, 3], y=[3, 2, 1])\nfig"
+    )
+    assert result.status == "ok", result.traceback
+    assert any(d.mime == "text/html" for d in result.displays)
+
+
+def test_dataframe_handle_mime_excluded_from_displays(executor: Executor) -> None:
+    # The DataFrame handle MIME is already surfaced as `df`; it must not also
+    # leak into `displays`, or the plot panel would try to render the handle.
+    _install_df_hook(executor)
+    result = executor.run("import pandas as pd; pd.DataFrame({'a': [1, 2, 3]})")
+    assert result.df is not None
+    assert all(d.mime != "application/vnd.kiln.df+json" for d in result.displays)
+
+
+def test_plain_value_has_no_displays_beyond_text(executor: Executor) -> None:
+    # A bare scalar yields only a text/plain display; nothing rich to render.
+    result = executor.run("1 + 1")
+    assert result.value == "2"
+    assert all(d.mime == "text/plain" for d in result.displays)
 
 
 def test_polars_dataframe_becomes_a_handle(executor: Executor) -> None:
