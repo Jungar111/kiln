@@ -35,5 +35,26 @@ export const SLOT_FIELDS = [
 
 export type SlotKey = (typeof SLOT_FIELDS)[number][0];
 
+/** Human label for a slot key, for drift banners and badges. */
+export function slotLabel(key: string): string {
+  return SLOT_FIELDS.find(([k]) => k === key)?.[1] ?? key;
+}
+
+/**
+ * One locked in-scope slot whose value would change — mirror of Rust
+ * `DriftEntry` (Ticket 72). Rides along on the `checkpoint:proposed` event.
+ */
+export type DriftEntry = {
+  readonly slot: SlotKey;
+  readonly old: string;
+  readonly new: string;
+};
+
+/** Payload of the `checkpoint:proposed` event — mirror of Rust `CheckpointProposed`. */
+export type CheckpointProposed = {
+  readonly proposal: ProposeExperiment;
+  readonly drift: readonly DriftEntry[];
+};
+
 /** Results-gate outcomes (spec §3.4). */
 export type Verdict = 'keep' | 'kill' | 'iterate';

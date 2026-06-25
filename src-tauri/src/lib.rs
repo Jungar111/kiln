@@ -9,6 +9,10 @@ use tauri::{Emitter as _, Manager as _};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // The locked-frame snapshot for drift detection (Ticket 72). Managed up
+        // front so `chat`/`approve_checkpoint`/`close_run` can resolve it even
+        // before the sidecar finishes spawning.
+        .manage(checkpoint::DriftState::default())
         .setup(|app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

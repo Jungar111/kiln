@@ -1,7 +1,17 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter as _, State};
 
+use crate::checkpoint::{DriftEntry, DriftState, ProposeExperiment};
 use crate::sidecar_client::{ExecuteResponse, SidecarClient};
+
+/// Payload of the `checkpoint:proposed` event. `drift` lists the locked in-scope
+/// slots this proposal would change; empty for the first proposal of a run (no
+/// lock yet) or when nothing in the locked frame moved.
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckpointProposed<'a> {
+    pub proposal: &'a ProposeExperiment,
+    pub drift: Vec<DriftEntry>,
+}
 
 #[derive(Debug, Serialize)]
 pub struct ExecuteCommandError {
@@ -38,18 +48,36 @@ pub async fn execute(
 /// If Claude's reply carries a `kiln-experiment` proposal block, fire the
 /// premise gate: a valid proposal is emitted as `checkpoint:proposed`; an
 /// invalid one is surfaced in the chat so Claude can self-correct next turn.
+///
+/// Drift detection (Ticket 72): when a run is open, the proposal is diffed
+/// against the locked frame. Any changed in-scope slot rides along on the event
+/// so the gate can re-fire with a "drift detected" banner.
 #[tauri::command]
-pub async fn chat(message: String, app: AppHandle) -> Result<String, String> {
+pub async fn chat(
+    message: String,
+    app: AppHandle,
+    drift: State<'_, DriftState>,
+) -> Result<String, String> {
     let raw = crate::claude::send(&message).await?;
     let prose = crate::claude::strip_proposal_block(&raw);
     match crate::claude::extract_proposal(&raw) {
         None => Ok(raw),
         Some(Ok(proposal)) => {
-            let _ = app.emit("checkpoint:proposed", &proposal);
-            Ok(if prose.is_empty() {
-                "Proposed an experiment — see the premise gate.".to_owned()
-            } else {
+            let changed = drift.check_drift(&proposal);
+            let drifted = !changed.is_empty();
+            let _ = app.emit(
+                "checkpoint:proposed",
+                CheckpointProposed {
+                    proposal: &proposal,
+                    drift: changed,
+                },
+            );
+            Ok(if !prose.is_empty() {
                 prose
+            } else if drifted {
+                "Re-firing the premise gate — a locked decision would change.".to_owned()
+            } else {
+                "Proposed an experiment — see the premise gate.".to_owned()
             })
         }
         Some(Err(errors)) => Ok(format!(
@@ -65,10 +93,14 @@ pub struct ApproveResponse {
 
 /// Approve a premise gate: forward the proposal to the sidecar, which opens an
 /// MLflow run tagged with the declared decisions, and return the run id.
+///
+/// On success, snapshot the approved proposal as the locked frame so subsequent
+/// proposals can be diffed for premise drift (Ticket 72).
 #[tauri::command]
 pub async fn approve_checkpoint(
-    proposal: crate::checkpoint::ProposeExperiment,
+    proposal: ProposeExperiment,
     client: State<'_, SidecarClient>,
+    drift: State<'_, DriftState>,
 ) -> Result<ApproveResponse, ExecuteCommandError> {
     let run_id = client
         .approve_checkpoint(&proposal)
@@ -77,15 +109,20 @@ pub async fn approve_checkpoint(
             code: e.code,
             message: e.message,
         })?;
+    drift.lock(&proposal);
     Ok(ApproveResponse { run_id })
 }
 
 /// Results gate: record the keep/kill/iterate verdict and finish the MLflow run.
+///
+/// Closing the run releases the locked frame (Ticket 72): the investigation is
+/// over, so the next proposal starts a fresh frame and cannot report drift.
 #[tauri::command]
 pub async fn close_run(
     run_id: String,
     verdict: String,
     client: State<'_, SidecarClient>,
+    drift: State<'_, DriftState>,
 ) -> Result<(), ExecuteCommandError> {
     client
         .close_run(&run_id, &verdict)
@@ -93,7 +130,9 @@ pub async fn close_run(
         .map_err(|e| ExecuteCommandError {
             code: e.code,
             message: e.message,
-        })
+        })?;
+    drift.release();
+    Ok(())
 }
 
 /// Return recent MLflow runs for the comparison view (Ticket 61).

@@ -1,25 +1,60 @@
 <script lang="ts">
-  import { SLOT_FIELDS, type ProposeExperiment } from '$lib/checkpoint-types';
+  import {
+    SLOT_FIELDS,
+    slotLabel,
+    type DriftEntry,
+    type ProposeExperiment,
+  } from '$lib/checkpoint-types';
   import SlotRow from './SlotRow.svelte';
   import InspectionRepl from './InspectionRepl.svelte';
 
   let {
     proposal,
+    drift = [],
     onapprove,
     ondecline,
   }: {
     proposal: ProposeExperiment;
+    /** Locked in-scope slots this proposal would change (Ticket 72). */
+    drift?: readonly DriftEntry[];
     onapprove: (proposal: ProposeExperiment) => void;
     ondecline: () => void;
   } = $props();
+
+  // Which slot keys drifted, so the matching SlotRow can flag itself.
+  const driftedKeys = $derived(new Set(drift.map((d) => d.slot)));
 </script>
 
 <div class="backdrop">
-  <div class="gate" role="dialog" aria-modal="true" aria-label="Premise gate">
+  <div
+    class="gate"
+    class:drifted={drift.length > 0}
+    role="dialog"
+    aria-modal="true"
+    aria-label="Premise gate"
+  >
     <header>
+      {#if drift.length > 0}<span class="drift-flag">Drift</span>{/if}
       <h2>{proposal.title}</h2>
       <p class="premise">{proposal.premise}</p>
     </header>
+
+    {#if drift.length > 0}
+      <div class="drift-banner" role="alert">
+        <strong>Drift detected</strong>
+        <p>A locked decision would change. Re-confirm the frame before proceeding.</p>
+        <ul>
+          {#each drift as entry (entry.slot)}
+            <li>
+              <span class="drift-slot">{slotLabel(entry.slot)}</span>
+              <span class="drift-old">{entry.old}</span>
+              <span class="drift-arrow">→</span>
+              <span class="drift-new">{entry.new}</span>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
 
     {#if proposal.look_here.length > 0}
       <div class="look-here">
@@ -34,7 +69,7 @@
 
     <div class="slots">
       {#each SLOT_FIELDS as [key, label] (key)}
-        <SlotRow {label} slot={proposal[key]} />
+        <SlotRow {label} slot={proposal[key]} drifted={driftedKeys.has(key)} />
       {/each}
     </div>
 
@@ -80,12 +115,66 @@
     flex-direction: column;
     gap: 14px;
   }
+  .gate.drifted {
+    border-color: #b3372a;
+    box-shadow: 0 0 0 1px rgba(224, 86, 63, 0.4);
+  }
   h2 {
     margin: 0 0 4px;
   }
   .premise {
     margin: 0;
     color: #bbb;
+  }
+  .drift-flag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #ffd9d2;
+    background: #b3372a;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-bottom: 6px;
+  }
+  .drift-banner {
+    border: 1px solid #b3372a;
+    background: rgba(224, 86, 63, 0.12);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .drift-banner > p {
+    margin: 4px 0 0;
+    color: #e8c4bd;
+  }
+  .drift-banner ul {
+    margin: 8px 0 0;
+    padding-left: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .drift-banner li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .drift-slot {
+    font-weight: 600;
+  }
+  .drift-old {
+    color: #c99;
+    text-decoration: line-through;
+  }
+  .drift-arrow {
+    color: #888;
+  }
+  .drift-new {
+    color: #eafff2;
   }
   .look-here {
     border: 1px solid #e0563f;
