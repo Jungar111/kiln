@@ -1,6 +1,7 @@
 <script lang="ts">
   import { SLOT_FIELDS, type ProposeExperiment } from '$lib/checkpoint-types';
   import SlotRow from './SlotRow.svelte';
+  import InspectionRepl from './InspectionRepl.svelte';
 
   let {
     proposal,
@@ -36,6 +37,10 @@
         <SlotRow {label} slot={proposal[key]} />
       {/each}
     </div>
+
+    <!-- The instrument of the review: poke the idle kernel before deciding. The
+         REPL lives on this component, so declining/approving discards its session. -->
+    <InspectionRepl />
 
     <footer>
       <!-- Real CodeView lands in Phase 5; placeholder for now. -->
