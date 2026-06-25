@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import cast
@@ -9,6 +10,23 @@ from typing import cast
 from kiln_sidecar.execute import Executor
 from kiln_sidecar.kernel import Kernel
 from kiln_sidecar.rpc import Dispatcher, JsonValue
+
+
+def _json_metadata(metadata: dict[str, object]) -> dict[str, JsonValue]:
+    """Coerce a display's metadata dict to a JSON-safe shape for the reply.
+
+    The metadata originates from a JSON-decoded kernel iopub message, so it is
+    already JsonValue-shaped at runtime; the round-trip both proves that and
+    narrows the static type. Anything not JSON-encodable (never expected here)
+    degrades to an empty object rather than crashing the execute reply.
+    """
+    try:
+        encoded = json.dumps(metadata)
+    except (TypeError, ValueError):
+        return {}
+    # json.loads of a JSON object yields a dict[str, JsonValue]; the dumps above
+    # was of a dict, so the top level is always an object.
+    return cast("dict[str, JsonValue]", json.loads(encoded))
 
 
 def main() -> int:
@@ -67,6 +85,14 @@ def main() -> int:
             "traceback": result.traceback,
             "ephemeral": result.ephemeral,
             "df": df,
+            # Rich MIME bundles (image/png, text/html, …) for the plot panel.
+            # These are small enough to ride the control plane; DataFrames do
+            # not — they stay on the direct Arrow path and are surfaced via the
+            # df handle, not here.
+            "displays": [
+                {"mime": d.mime, "payload": d.payload, "metadata": _json_metadata(d.metadata)}
+                for d in result.displays
+            ],
         }
 
     def approve_checkpoint(params: dict[str, JsonValue]) -> JsonValue:

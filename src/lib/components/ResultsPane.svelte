@@ -1,9 +1,11 @@
 <script lang="ts">
   import { createRunsStore } from '$lib/runs-store.svelte';
   import { dfStore } from '$lib/df-store.svelte';
+  import { plotStore } from '$lib/plot-store.svelte';
   import RunsList from './RunsList.svelte';
   import CompareView from './CompareView.svelte';
   import DataFrameView from './DataFrameView.svelte';
+  import PlotPanel from './PlotPanel.svelte';
 
   type Tab = 'dataframe' | 'plot' | 'runs';
   let tab = $state<Tab>('runs');
@@ -40,8 +42,11 @@
       <p class="empty">Run a cell that returns a DataFrame to explore it here.</p>
     {/if}
   {:else if tab === 'plot'}
-    <!-- Phase 6 mounts its PlotPanel here when its branch merges. -->
-    <p class="empty">Plots will appear here.</p>
+    {#if plotStore.displays.length > 0}
+      <PlotPanel displays={plotStore.displays} />
+    {:else}
+      <p class="empty">Run a cell that draws a plot to see it here.</p>
+    {/if}
   {:else}
     <div class="runs-tab">
       <header>

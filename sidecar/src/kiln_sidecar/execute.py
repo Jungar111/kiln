@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import io
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal
 
 if TYPE_CHECKING:
@@ -20,6 +20,23 @@ Status = Literal["ok", "error"]
 # Custom MIME the df_display hook emits instead of the giant default HTML repr.
 # Kept in sync with kiln_sidecar.df_display.MIME.
 DF_MIME: Final[str] = "application/vnd.kiln.df+json"
+
+
+@dataclass(frozen=True, slots=True)
+class Display:
+    """One MIME rendering of a `display_data` / `execute_result` bundle.
+
+    The kernel may emit several MIME types for the same output (matplotlib emits
+    PNG + SVG + text; plotly emits HTML + PNG). We fan every one out and let the
+    viewer (Ticket 51) pick the highest-fidelity rendering it can render.
+
+    `payload` is the raw MIME value as the kernel serialised it: base64 for
+    binary types (e.g. `image/png`), plain text for `text/html` / `text/plain`.
+    """
+
+    mime: str
+    payload: str
+    metadata: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +64,11 @@ class ExecuteResult:
     ephemeral: bool
     # Present when the cell evaluated to a DataFrame (the display hook fired).
     df: DfHandle | None = None
+    # Every rich MIME bundle the kernel emitted (image/png, text/html, …),
+    # minus the DataFrame handle MIME (already surfaced as `df`). The viewer
+    # picks the best rendering per display. Default factory so the frozen
+    # dataclass keeps a per-instance list.
+    displays: list[Display] = field(default_factory=list)
 
 
 # Prepended to every cell so the MLflow autolog gate is installed *in the kernel*
@@ -91,6 +113,7 @@ class Executor:
             value: str | None = None
             traceback: str | None = None
             df: DfHandle | None = None
+            displays: list[Display] = []
 
             def on_iopub(msg: dict[str, object]) -> None:
                 nonlocal value, traceback, df
@@ -114,6 +137,10 @@ class Executor:
                         parsed = _parse_df_handle(data.get(DF_MIME))
                         if parsed is not None:
                             df = parsed
+                        # Fan out every MIME rendering for the viewer. The DF
+                        # handle MIME is excluded — it's already surfaced as `df`,
+                        # and the plot panel must never try to render it.
+                        displays.extend(_collect_displays(data, content.get("metadata")))
                 elif msg_type == "error":
                     tb = content.get("traceback", [])
                     if isinstance(tb, list):
@@ -140,9 +167,38 @@ class Executor:
                 traceback=traceback,
                 ephemeral=ephemeral,
                 df=df,
+                displays=displays,
             )
         finally:
             client.stop_channels()
+
+
+def _collect_displays(data: object, metadata_raw: object) -> list[Display]:
+    """Fan a MIME bundle out into one `Display` per rendering.
+
+    The DataFrame handle MIME is dropped (it's surfaced separately as `df`).
+    Non-string keys/values are skipped/empty-coerced so a malformed bundle
+    degrades to fewer displays rather than raising in the iopub callback.
+    """
+    if not isinstance(data, dict):
+        return []
+    metadata: dict[str, object] = {}
+    if isinstance(metadata_raw, dict):
+        for key, value in metadata_raw.items():
+            if isinstance(key, str):
+                metadata[key] = value
+    displays: list[Display] = []
+    for mime, payload in data.items():
+        if not isinstance(mime, str) or mime == DF_MIME:
+            continue
+        displays.append(
+            Display(
+                mime=mime,
+                payload=payload if isinstance(payload, str) else "",
+                metadata=metadata,
+            )
+        )
+    return displays
 
 
 def _parse_df_handle(raw: object) -> DfHandle | None:

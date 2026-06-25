@@ -36,6 +36,18 @@ impl std::fmt::Display for RpcError {
 
 impl std::error::Error for RpcError {}
 
+/// One MIME rendering of a kernel `display_data` / `execute_result` bundle
+/// (e.g. `image/png`, `text/html`). Small enough to ride the control plane;
+/// DataFrames never do — they stay on the direct Arrow path. The webview's
+/// plot panel (Ticket 51) picks the highest-fidelity rendering it can show.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Display {
+    pub mime: String,
+    pub payload: String,
+    /// Opaque per-MIME metadata from the kernel; passed straight through.
+    pub metadata: serde_json::Value,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DfHandle {
     pub handle: String,
@@ -55,6 +67,9 @@ pub struct ExecuteResponse {
     // webview↔sidecar over Arrow IPC; only this handle crosses the Rust IPC.
     #[serde(default)]
     pub df: Option<DfHandle>,
+    /// Rich MIME bundles the kernel emitted, minus the DataFrame handle MIME.
+    #[serde(default)]
+    pub displays: Vec<Display>,
 }
 
 /// Shared state guarded by a single Mutex to prevent races between

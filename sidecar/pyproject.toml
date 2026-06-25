@@ -31,6 +31,14 @@ dev = [
     # pin it as a dev dep so the polars code path is type-checked and tested;
     # production users who only use pandas need not install it.
     "polars>=1.0",
+    # matplotlib + plotly are test-only: they exercise the display_data MIME
+    # router (Ticket 50). matplotlib emits image/png (under the inline backend);
+    # plotly emits text/html. The sidecar never imports them at runtime — the
+    # kernel does, on demand. nbformat is plotly's runtime peer for the HTML
+    # mimebundle renderer (without it plotly raises when displaying a figure).
+    "matplotlib>=3.8",
+    "plotly>=5.20",
+    "nbformat>=4.2",
 ]
 
 # ---------------------------------------------------------------------------
