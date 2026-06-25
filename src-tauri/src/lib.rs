@@ -59,7 +59,8 @@ pub fn run() {
             commands::execute,
             commands::chat,
             commands::approve_checkpoint,
-            commands::close_run
+            commands::close_run,
+            commands::list_runs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

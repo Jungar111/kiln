@@ -293,6 +293,14 @@ impl SidecarClient {
         .await?;
         Ok(())
     }
+
+    /// Fetch recent MLflow runs (params, metrics, and `kiln.slot.*` decisions).
+    /// The payload is owned by the sidecar/webview contract, so we pass the JSON
+    /// array straight through rather than re-modelling it in Rust.
+    pub async fn list_runs(&self, limit: u32) -> Result<serde_json::Value, RpcError> {
+        self.call("list_runs", serde_json::json!({ "limit": limit }))
+            .await
+    }
 }
 
 #[cfg(test)]

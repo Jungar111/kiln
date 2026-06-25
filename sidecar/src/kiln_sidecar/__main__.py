@@ -61,9 +61,26 @@ def main() -> int:
         close(run_id, cast("Verdict", verdict))
         return {"run_id": run_id, "verdict": verdict}
 
+    def list_runs(params: dict[str, JsonValue]) -> JsonValue:
+        from dataclasses import asdict
+
+        import mlflow
+
+        from kiln_sidecar.mlflow_query import list_runs as query_runs
+
+        names_raw = params.get("experiment_names")
+        names = (
+            [n for n in names_raw if isinstance(n, str)] if isinstance(names_raw, list) else None
+        )
+        limit_raw = params.get("limit", 50)
+        limit = limit_raw if isinstance(limit_raw, int) else 50
+        mlflow.set_tracking_uri(f"sqlite:///{Path.cwd() / 'mlruns.db'}")
+        return [asdict(run) for run in query_runs(experiment_names=names, limit=limit)]
+
     dispatcher.register("execute", execute)
     dispatcher.register("approve_checkpoint", approve_checkpoint)
     dispatcher.register("close_run", close_run)
+    dispatcher.register("list_runs", list_runs)
     try:
         for line in sys.stdin:
             stripped = line.strip()

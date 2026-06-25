@@ -95,3 +95,18 @@ pub async fn close_run(
             message: e.message,
         })
 }
+
+/// Return recent MLflow runs for the comparison view (Ticket 61).
+#[tauri::command]
+pub async fn list_runs(
+    limit: u32,
+    client: State<'_, SidecarClient>,
+) -> Result<serde_json::Value, ExecuteCommandError> {
+    client
+        .list_runs(limit)
+        .await
+        .map_err(|e| ExecuteCommandError {
+            code: e.code,
+            message: e.message,
+        })
+}
