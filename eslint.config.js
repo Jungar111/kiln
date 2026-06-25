@@ -85,4 +85,19 @@ export default ts.config(
       },
     },
   },
+
+  // `.svelte.ts` files contain Svelte-specific syntax (runes such as `$state`)
+  // and must be parsed with the TypeScript parser. They are included in the
+  // project's tsconfig via SvelteKit's generated config but ESLint needs an
+  // explicit hint here.
+  {
+    files: ['**/*.svelte.ts'],
+    languageOptions: {
+      parser: ts.parser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
 );
