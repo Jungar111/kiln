@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from kiln_sidecar.arrow_server import ArrowServer, FrameRegistry
 from kiln_sidecar.execute import Executor
 from kiln_sidecar.kernel import Kernel
 from kiln_sidecar.rpc import Dispatcher, JsonValue
@@ -15,7 +16,17 @@ def main() -> int:
     kernel = Kernel()
     kernel.start()
     executor = Executor(kernel)
+
+    # Local-only Arrow Flight server. DataFrames stream from here straight to the
+    # webview — their bytes never cross the Rust IPC control plane.
+    registry = FrameRegistry()
+    arrow_server = ArrowServer(registry, host="127.0.0.1", port=0)
+    arrow_server.start()
+
     dispatcher = Dispatcher()
+
+    def arrow_port(_: dict[str, JsonValue]) -> JsonValue:
+        return {"port": arrow_server.port}
 
     def execute(params: dict[str, JsonValue]) -> JsonValue:
         code = params.get("code")
@@ -64,6 +75,7 @@ def main() -> int:
     dispatcher.register("execute", execute)
     dispatcher.register("approve_checkpoint", approve_checkpoint)
     dispatcher.register("close_run", close_run)
+    dispatcher.register("arrow_port", arrow_port)
     try:
         for line in sys.stdin:
             stripped = line.strip()
@@ -73,6 +85,7 @@ def main() -> int:
             sys.stdout.write("\n")
             sys.stdout.flush()
     finally:
+        arrow_server.shutdown()
         kernel.shutdown()
     return 0
 
