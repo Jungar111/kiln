@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import mlflow
 
 from kiln_sidecar.checkpoint import ProposeExperiment, Severity, Slot
-from kiln_sidecar.mlflow_runs import start_run_with_decisions
+from kiln_sidecar.mlflow_runs import close_run, start_run_with_decisions
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -36,3 +36,13 @@ def test_decisions_land_as_tags(tmp_path: Path) -> None:
     assert tags["kiln.slot.validation_strategy.severity"] == "critical"
     assert tags["kiln.title"] == proposal.title
     mlflow.end_run()
+
+
+def test_close_run_writes_outcome_tag(tmp_path: Path) -> None:
+    mlflow.set_tracking_uri(f"sqlite:///{tmp_path / 'mlflow.db'}")
+    run_id = start_run_with_decisions(_sample())
+    mlflow.end_run()  # release the active run before closing it by id
+    close_run(run_id, "keep")
+    run = mlflow.get_run(run_id)
+    assert run.data.tags["kiln.outcome"] == "keep"
+    assert run.info.status == "FINISHED"

@@ -4,22 +4,43 @@
   import CodeViewPane from './CodeViewPane.svelte';
   import ResultsPane from './ResultsPane.svelte';
   import PremiseGate from './PremiseGate.svelte';
+  import ResultsGate from './ResultsGate.svelte';
   import { createSidecarStatus } from '$lib/sidecar-status.svelte';
   import { createCheckpointStore } from '$lib/checkpoint-store.svelte';
   import { chat } from '$lib/chat-store.svelte';
-  import type { ProposeExperiment } from '$lib/checkpoint-types';
+  import type { ProposeExperiment, Verdict } from '$lib/checkpoint-types';
 
   const status = createSidecarStatus();
   const ckpt = createCheckpointStore();
+
+  // The run awaiting a keep/kill/iterate verdict. Set on approve; cleared once a
+  // verdict is recorded.
+  // ponytail: the results gate currently appears right after approval. Firing it
+  // on autolog completion waits on the experiment-execution loop (later phase).
+  let activeRunId = $state<string | null>(null);
 
   async function approve(proposal: ProposeExperiment): Promise<void> {
     try {
       const { run_id } = await invoke<{ run_id: string }>('approve_checkpoint', { proposal });
       chat.note(`Run started: ${run_id}`);
+      activeRunId = run_id;
     } catch (err) {
       chat.note(`⚠️ Approve failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       ckpt.clear();
+    }
+  }
+
+  async function recordVerdict(verdict: Verdict): Promise<void> {
+    const runId = activeRunId;
+    if (runId === null) return;
+    try {
+      await invoke('close_run', { runId, verdict });
+      chat.note(`Verdict on ${runId}: ${verdict}`);
+    } catch (err) {
+      chat.note(`⚠️ close_run failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      activeRunId = null;
     }
   }
 </script>
@@ -41,6 +62,15 @@
     }}
     ondecline={() => {
       ckpt.clear();
+    }}
+  />
+{/if}
+
+{#if activeRunId}
+  <ResultsGate
+    runId={activeRunId}
+    onpick={(verdict: Verdict) => {
+      void recordVerdict(verdict);
     }}
   />
 {/if}

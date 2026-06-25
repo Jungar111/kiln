@@ -34,3 +34,6 @@ export const SLOT_FIELDS = [
 ] as const;
 
 export type SlotKey = (typeof SLOT_FIELDS)[number][0];
+
+/** Results-gate outcomes (spec §3.4). */
+export type Verdict = 'keep' | 'kill' | 'iterate';

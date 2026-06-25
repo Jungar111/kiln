@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import cast
 
 from kiln_sidecar.execute import Executor
 from kiln_sidecar.kernel import Kernel
@@ -45,8 +46,24 @@ def main() -> int:
         proposal = ProposeExperiment.model_validate(proposal_raw)
         return {"run_id": start_run_with_decisions(proposal)}
 
+    def close_run(params: dict[str, JsonValue]) -> JsonValue:
+        import mlflow
+
+        from kiln_sidecar.mlflow_runs import VERDICTS, Verdict
+        from kiln_sidecar.mlflow_runs import close_run as close
+
+        run_id = params.get("run_id")
+        verdict = params.get("verdict")
+        if not isinstance(run_id, str) or verdict not in VERDICTS:
+            raise ValueError("close_run needs run_id:str and verdict in keep|kill|iterate")
+        mlflow.set_tracking_uri(f"sqlite:///{Path.cwd() / 'mlruns.db'}")
+        # verdict is one of VERDICTS, i.e. a Verdict, proven by the guard above.
+        close(run_id, cast("Verdict", verdict))
+        return {"run_id": run_id, "verdict": verdict}
+
     dispatcher.register("execute", execute)
     dispatcher.register("approve_checkpoint", approve_checkpoint)
+    dispatcher.register("close_run", close_run)
     try:
         for line in sys.stdin:
             stripped = line.strip()

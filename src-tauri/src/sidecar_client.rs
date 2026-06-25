@@ -283,6 +283,16 @@ impl SidecarClient {
                 message: "approve_checkpoint reply missing run_id".into(),
             })
     }
+
+    /// Record the results-gate verdict (keep | kill | iterate) and finish the run.
+    pub async fn close_run(&self, run_id: &str, verdict: &str) -> Result<(), RpcError> {
+        self.call(
+            "close_run",
+            serde_json::json!({ "run_id": run_id, "verdict": verdict }),
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

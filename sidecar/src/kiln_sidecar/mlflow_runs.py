@@ -7,12 +7,15 @@ have configured the tracking URI already.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Literal
 
 import mlflow
 
 if TYPE_CHECKING:
     from kiln_sidecar.checkpoint import ProposeExperiment, Slot
+
+Verdict = Literal["keep", "kill", "iterate"]
+VERDICTS: Final[tuple[Verdict, ...]] = ("keep", "kill", "iterate")
 
 
 def _slots(proposal: ProposeExperiment) -> dict[str, Slot]:
@@ -39,3 +42,14 @@ def start_run_with_decisions(proposal: ProposeExperiment) -> str:
         mlflow.set_tag(f"kiln.slot.{name}.in_scope", str(slot.in_scope))
     mlflow.set_tag("kiln.look_here", "\n".join(proposal.look_here))
     return run_id
+
+
+def close_run(run_id: str, verdict: Verdict) -> None:
+    """Record the results-gate verdict and finish the run.
+
+    Uses the client API (not the active-run context) so it works regardless of
+    which run, if any, is currently active in the sidecar process.
+    """
+    client = mlflow.MlflowClient()
+    client.set_tag(run_id, "kiln.outcome", verdict)
+    client.set_terminated(run_id, status="FINISHED")

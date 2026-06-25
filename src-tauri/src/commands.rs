@@ -79,3 +79,19 @@ pub async fn approve_checkpoint(
         })?;
     Ok(ApproveResponse { run_id })
 }
+
+/// Results gate: record the keep/kill/iterate verdict and finish the MLflow run.
+#[tauri::command]
+pub async fn close_run(
+    run_id: String,
+    verdict: String,
+    client: State<'_, SidecarClient>,
+) -> Result<(), ExecuteCommandError> {
+    client
+        .close_run(&run_id, &verdict)
+        .await
+        .map_err(|e| ExecuteCommandError {
+            code: e.code,
+            message: e.message,
+        })
+}
