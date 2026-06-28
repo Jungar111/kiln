@@ -1,0 +1,91 @@
+/*
+ * Kiln "Terminal Lab" design tokens — the single source of palette + type for
+ * the whole app (matches the Kiln.dc.html design doc). Components reference these
+ * vars in scoped styles rather than hardcoding hex.
+ */
+:root {
+  /* surfaces */
+  --bg: #161513;
+  --bg-side: #19120e;
+  --bg-chat: #181612;
+  --bg-bar: #211f1c;
+  --bg-repl: #120f0c;
+  --bg-panel: #1a1916;
+  --bg-panel-2: #1c1b18;
+  --bg-row-alt: #181613;
+  --bg-input: #0f0d0b;
+  --bg-sel: #241a13;
+  --bg-look: linear-gradient(90deg, #2a1c10, #1d1611);
+  --bg-flag: linear-gradient(90deg, #2a1410, #1d1310);
+  --bg-good-soft: #16201a;
+  --bg-bad-soft: #1d1310;
+
+  /* borders */
+  --bd: #2a2825;
+  --bd-2: #34322e;
+  --bd-soft: #2f2a23;
+  --bd-row: #211d18;
+  --bd-good: #2c4030;
+  --bd-bad: #5a2a22;
+  --bd-ember: #4a3115;
+
+  /* ember accent */
+  --ember: #e8843b;
+  --ember-deep: #b8431f;
+  --ember-soft: #e8a35f;
+  --ember-serif: #c9a06a;
+  --ember-grad: linear-gradient(180deg, #f0974a, #e0742d);
+  --logo-grad: linear-gradient(150deg, #e8843b, #b8431f);
+
+  /* text */
+  --tx-title: #f1ede5;
+  --tx-bright: #ece8e1;
+  --tx: #b8b2a8;
+  --tx-2: #cabfae;
+  --tx-3: #d8cfbf;
+  --tx-dim: #9b948a;
+  --tx-dim2: #8c867b;
+  --tx-mut: #7d776c;
+  --tx-mut2: #6c655c;
+  --tx-mut3: #5b554d;
+
+  /* status */
+  --good: #6bbf73;
+  --warn: #d8a23c;
+  --bad: #e5634d;
+  --bad-bright: #f0907e;
+  --info: #6f8aa6;
+
+  /* type */
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+  --font-serif: 'Newsreader', Georgia, serif;
+}
+
+:global(html),
+:global(body) {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+:global(*) {
+  box-sizing: border-box;
+}
+
+/* the blinking ember cursor used in the repl strip */
+@keyframes kblink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}

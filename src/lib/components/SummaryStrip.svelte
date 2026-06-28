@@ -50,28 +50,37 @@
     display: flex;
     gap: 8px;
     overflow-x: auto;
-    padding-bottom: 6px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--bd);
+    flex-shrink: 0;
   }
   .col {
     min-width: 120px;
-    border: 1px solid #2a2a2a;
+    border: 1px solid var(--bd);
     border-radius: 6px;
     padding: 6px 8px;
-    background: #161616;
-    font-size: 11px;
-    color: #aaa;
+    background: var(--bg-panel);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--tx-mut);
   }
   .name {
-    color: #e6e6e6;
-    font-weight: 600;
+    color: var(--tx-bright);
+    font-weight: 500;
     white-space: nowrap;
+    font-family: var(--font-sans);
+    font-size: 11px;
   }
   .dtype {
-    color: #9ad;
+    color: var(--ember-soft);
     margin-bottom: 4px;
   }
+  .stat {
+    color: var(--tx-dim);
+  }
   .err {
-    color: #e0866f;
+    color: var(--bad);
     font-size: 12px;
+    margin: 8px 16px;
   }
 </style>
