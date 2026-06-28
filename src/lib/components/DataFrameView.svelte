@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fetchPage, type DfPage } from '$lib/arrow-client';
+  import { toMessage } from '$lib/errors';
   import SummaryStrip from './SummaryStrip.svelte';
 
   let { handle, rows: totalRows }: { handle: string; rows: number } = $props();
@@ -29,7 +30,7 @@
       page = await fetchPage(handle, opts);
       error = null;
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = toMessage(err);
     }
   }
 

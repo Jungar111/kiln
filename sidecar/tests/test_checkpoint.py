@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from kiln_sidecar.checkpoint import ProposeExperiment, Severity
+from kiln_sidecar.checkpoint import ProposeExperiment, Severity, Slot
 
 SAMPLE_JSON: str = """{
   "title": "Predict churn from the first 30 days",
@@ -39,3 +39,10 @@ def test_empty_answer_is_rejected_by_pydantic() -> None:
         ProposeExperiment.model_validate_json(
             SAMPLE_JSON.replace("PR-AUC; classes are imbalanced.", "")
         )
+
+
+def test_out_of_scope_empty_answer_is_accepted() -> None:
+    # Rust's validate() accepts an empty answer when the slot is out of scope, so
+    # Python must too (a stricter min_length here rejected proposals the Rust tool
+    # boundary already approved, failing the approve step).
+    Slot(in_scope=False, severity=Severity.FYI, answer="")

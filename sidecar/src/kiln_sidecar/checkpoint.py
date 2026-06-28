@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Final
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, model_validator
 
 
 class Severity(StrEnum):
@@ -23,7 +23,10 @@ class Severity(StrEnum):
 class Slot(BaseModel):
     in_scope: bool
     severity: Severity
-    answer: str = Field(min_length=1)
+    # No `min_length` here: an out-of-scope slot may legitimately be empty/"N/A".
+    # The in-scope non-empty rule (matching Rust `ProposeExperiment::validate`) is
+    # enforced below, so Python accepts exactly what the Rust tool boundary does.
+    answer: str
 
     @model_validator(mode="after")
     def _require_answer_when_in_scope(self) -> Slot:
@@ -44,8 +47,10 @@ REQUIRED_SLOTS: Final[tuple[str, ...]] = (
 
 
 class ProposeExperiment(BaseModel):
-    title: str = Field(min_length=1)
-    premise: str = Field(min_length=1)
+    # Rust accepts any title/premise (the gate already rendered), so don't reject
+    # here — Python must accept whatever passed the Rust tool boundary.
+    title: str
+    premise: str
     validation_strategy: Slot
     target_definition: Slot
     feature_provenance: Slot

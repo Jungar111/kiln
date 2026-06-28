@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fetchSummary, type SummaryRow } from '$lib/arrow-client';
+  import { toMessage } from '$lib/errors';
 
   let { handle }: { handle: string } = $props();
 
@@ -16,7 +17,7 @@
       rows = await fetchSummary(h);
       error = null;
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = toMessage(err);
     }
   }
 

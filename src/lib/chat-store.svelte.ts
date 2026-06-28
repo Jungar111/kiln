@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { toMessage } from './errors';
 
 export type ChatRole = 'user' | 'assistant';
 export type ChatMessage = { readonly role: ChatRole; readonly content: string };
@@ -21,8 +22,7 @@ function createChat(): Chat {
     } catch (err) {
       // The command can fail (claude not on PATH, CLI error). Surface it in the
       // transcript rather than dropping it on the floor.
-      const detail = err instanceof Error ? err.message : String(err);
-      messages.push({ role: 'assistant', content: `⚠️ ${detail}` });
+      messages.push({ role: 'assistant', content: `⚠️ ${toMessage(err)}` });
     }
   }
 

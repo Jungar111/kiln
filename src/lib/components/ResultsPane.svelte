@@ -6,6 +6,7 @@
   import CompareView from './CompareView.svelte';
   import DataFrameView from './DataFrameView.svelte';
   import PlotPanel from './PlotPanel.svelte';
+  import { toMessage } from '$lib/errors';
 
   type Tab = 'dataframe' | 'plot' | 'runs';
   let tab = $state<Tab>('runs');
@@ -19,7 +20,7 @@
       await store.refresh();
       error = null;
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = toMessage(err);
     }
   }
 

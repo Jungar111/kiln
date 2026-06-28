@@ -8,6 +8,7 @@
   import { createSidecarStatus } from '$lib/sidecar-status.svelte';
   import { createCheckpointStore } from '$lib/checkpoint-store.svelte';
   import { chat } from '$lib/chat-store.svelte';
+  import { toMessage } from '$lib/errors';
   import type { ProposeExperiment, Verdict } from '$lib/checkpoint-types';
 
   const status = createSidecarStatus();
@@ -25,7 +26,7 @@
       chat.note(`Run started: ${run_id}`);
       activeRunId = run_id;
     } catch (err) {
-      chat.note(`⚠️ Approve failed: ${err instanceof Error ? err.message : String(err)}`);
+      chat.note(`⚠️ Approve failed: ${toMessage(err)}`);
     } finally {
       ckpt.clear();
     }
@@ -38,7 +39,7 @@
       await invoke('close_run', { runId, verdict });
       chat.note(`Verdict on ${runId}: ${verdict}`);
     } catch (err) {
-      chat.note(`⚠️ close_run failed: ${err instanceof Error ? err.message : String(err)}`);
+      chat.note(`⚠️ close_run failed: ${toMessage(err)}`);
     } finally {
       activeRunId = null;
     }

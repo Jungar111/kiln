@@ -2,6 +2,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { dfStore, type DfHandle } from '$lib/df-store.svelte';
   import { plotStore, type Display } from '$lib/plot-store.svelte';
+  import { toMessage } from '$lib/errors';
 
   // Mirrors `ExecuteResponse` in `src-tauri/src/sidecar_client.rs`. Every line
   // typed here runs with `ephemeral: true` so the poke never lands in the run.
@@ -38,7 +39,7 @@
       plotStore.setDisplays(response.displays);
       history = [...history, { id: nextId++, code, response }];
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = toMessage(err);
       history = [
         ...history,
         {
