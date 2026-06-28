@@ -57,8 +57,9 @@ pub async fn chat(
     message: String,
     app: AppHandle,
     drift: State<'_, DriftState>,
+    session: State<'_, crate::claude::ClaudeSession>,
 ) -> Result<String, String> {
-    let raw = crate::claude::send(&message).await?;
+    let raw = crate::claude::send(&message, &session).await?;
     let prose = crate::claude::strip_proposal_block(&raw);
     match crate::claude::extract_proposal(&raw) {
         None => Ok(raw),

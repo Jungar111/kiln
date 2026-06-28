@@ -1,4 +1,5 @@
 use std::process::Stdio;
+use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -6,6 +7,28 @@ use tokio::io::AsyncWriteExt as _;
 use tokio::process::Command;
 
 use crate::checkpoint::ProposeExperiment;
+
+/// Holds the Claude Code session id so chat turns continue one conversation.
+///
+/// The first turn runs a fresh session and the CLI assigns an id, which we keep;
+/// every later turn passes `--resume <id>` so Claude retains the prior context.
+#[derive(Default)]
+pub struct ClaudeSession {
+    id: Mutex<Option<String>>,
+}
+
+impl ClaudeSession {
+    fn current(&self) -> Option<String> {
+        self.id
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn remember(&self, id: String) {
+        *self.id.lock().unwrap_or_else(PoisonError::into_inner) = Some(id);
+    }
+}
 
 /// Hard ceiling so a wedged `claude` subprocess can't hang the chat forever.
 // ponytail: fixed 5-min timeout; lift it if real agentic turns run longer.
@@ -36,30 +59,46 @@ must be non-empty. Do NOT emit the block for ordinary conversation.";
 struct CliResult {
     is_error: bool,
     result: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
 }
 
-/// Run one non-interactive Claude Code turn and return its text result.
+/// A parsed CLI reply: the text plus the session id to resume next turn.
+#[derive(Debug)]
+struct Reply {
+    text: String,
+    session_id: Option<String>,
+}
+
+/// Run one Claude Code turn, continuing `session` so the conversation persists.
 ///
 /// We shell out to the `claude` CLI (`-p --output-format json`) instead of the
 /// raw Anthropic API: auth, tools, MCP, and project context all come for free
 /// from the user's existing Claude Code install. The prompt is piped over stdin
 /// so a message that looks like a flag (e.g. "--continue") can't be misparsed.
-///
-/// Out of scope (Ticket 22): multi-turn. Each call is a fresh session. Passing
-/// `--session-id` / `--resume` is the one-line upgrade when thread support lands.
-pub async fn send(prompt: &str) -> Result<String, String> {
-    tokio::time::timeout(TIMEOUT, run(prompt))
+pub async fn send(prompt: &str, session: &ClaudeSession) -> Result<String, String> {
+    let resume = session.current();
+    let reply = tokio::time::timeout(TIMEOUT, run(prompt, resume.as_deref()))
         .await
-        .map_err(|_| format!("claude timed out after {}s", TIMEOUT.as_secs()))?
+        .map_err(|_| format!("claude timed out after {}s", TIMEOUT.as_secs()))??;
+    if let Some(id) = reply.session_id {
+        session.remember(id);
+    }
+    Ok(reply.text)
 }
 
-async fn run(prompt: &str) -> Result<String, String> {
-    let mut child = Command::new("claude")
+async fn run(prompt: &str, resume: Option<&str>) -> Result<Reply, String> {
+    let mut command = Command::new("claude");
+    command
         .arg("-p")
         .arg("--output-format")
         .arg("json")
         .arg("--append-system-prompt")
-        .arg(KILN_SYSTEM_PROMPT)
+        .arg(KILN_SYSTEM_PROMPT);
+    if let Some(id) = resume {
+        command.arg("--resume").arg(id);
+    }
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -92,8 +131,8 @@ async fn run(prompt: &str) -> Result<String, String> {
     parse_output(&output.stdout)
 }
 
-/// Extract the text reply from `claude --output-format json` stdout.
-fn parse_output(stdout: &[u8]) -> Result<String, String> {
+/// Extract the text reply + session id from `claude --output-format json` stdout.
+fn parse_output(stdout: &[u8]) -> Result<Reply, String> {
     let parsed: CliResult = serde_json::from_slice(stdout)
         .map_err(|e| format!("could not parse claude output: {e}"))?;
     let text = parsed.result.unwrap_or_default();
@@ -104,7 +143,10 @@ fn parse_output(stdout: &[u8]) -> Result<String, String> {
             text
         });
     }
-    Ok(text)
+    Ok(Reply {
+        text,
+        session_id: parsed.session_id,
+    })
 }
 
 /// Pull the JSON body out of a ```` ```kiln-experiment ```` fenced block, if the
@@ -162,7 +204,9 @@ mod tests {
     #[test]
     fn extracts_result_text() {
         let raw = br#"{"type":"result","subtype":"success","is_error":false,"result":"pong","session_id":"x"}"#;
-        assert_eq!(parse_output(raw).unwrap(), "pong");
+        let reply = parse_output(raw).unwrap();
+        assert_eq!(reply.text, "pong");
+        assert_eq!(reply.session_id.as_deref(), Some("x"));
     }
 
     #[test]
@@ -193,6 +237,14 @@ mod tests {
             .expect("block present")
             .expect_err("invalid");
         assert!(err.contains("metric_choice"));
+    }
+
+    #[test]
+    fn session_remembers_id_for_resume() {
+        let session = super::ClaudeSession::default();
+        assert!(session.current().is_none());
+        session.remember("sess-123".to_owned());
+        assert_eq!(session.current().as_deref(), Some("sess-123"));
     }
 
     #[test]

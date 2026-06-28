@@ -13,6 +13,7 @@ pub fn run() {
         // front so `chat`/`approve_checkpoint`/`close_run` can resolve it even
         // before the sidecar finishes spawning.
         .manage(checkpoint::DriftState::default())
+        .manage(claude::ClaudeSession::default())
         .setup(|app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
