@@ -72,6 +72,15 @@
 </script>
 
 <div class="df">
+  <div class="bar">
+    <span class="df-name">df</span>
+    <span class="df-shape">{totalRows.toLocaleString()} × {page.columns.length}</span>
+    <span class="sep">·</span>
+    <span class="ok">zero-copy</span>
+    <span class="sep">·</span>
+    <span class="muted">server-side sort / filter</span>
+  </div>
+
   <SummaryStrip {handle} />
 
   {#if error}
@@ -84,6 +93,7 @@
         <tr>
           {#each page.columns as column (column)}
             <th
+              class:sorted={sortBy === column}
               onclick={() => {
                 sortColumn(column);
               }}
@@ -116,60 +126,101 @@
   .df {
     display: flex;
     flex-direction: column;
-    gap: 8px;
     height: 100%;
     min-height: 0;
+  }
+  .bar {
+    height: 42px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--bd);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .df-name {
+    color: var(--ember-soft);
+  }
+  .df-shape {
+    color: var(--tx-dim2);
+  }
+  .sep {
+    color: var(--tx-mut3);
+  }
+  .ok {
+    color: var(--good);
+  }
+  .muted {
+    color: var(--tx-dim2);
   }
   .scroll {
     flex: 1;
     overflow: auto;
-    border: 1px solid #2a2a2a;
-    border-radius: 6px;
   }
   table {
     border-collapse: collapse;
-    font-size: 12px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
     width: 100%;
   }
   th {
     position: sticky;
     top: 0;
-    background: #1f1f1f;
-    color: #e6e6e6;
+    background: var(--bg-panel-2);
+    color: var(--tx-2);
     text-align: left;
-    padding: 4px 8px;
+    padding: 7px 10px;
     cursor: pointer;
     white-space: nowrap;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--bd-2);
+    border-right: 1px solid var(--bd-row);
+    font-weight: 400;
+  }
+  th.sorted {
+    color: var(--ember-soft);
   }
   td {
-    padding: 3px 8px;
-    color: #ddd;
+    padding: 6px 10px;
+    color: var(--tx);
     white-space: nowrap;
-    border-bottom: 1px solid #1f1f1f;
+    border-bottom: 1px solid var(--bd-row);
+  }
+  tbody tr:nth-child(even) {
+    background: var(--bg-row-alt);
   }
   footer {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 12px;
-    color: #aaa;
+    padding: 8px 16px;
+    border-top: 1px solid var(--bd);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--tx-dim);
   }
   button {
-    background: #2a2a2a;
-    color: #e6e6e6;
-    border: 1px solid #333;
+    background: var(--bg-panel-2);
+    color: var(--tx-2);
+    border: 1px solid var(--bd-2);
     border-radius: 6px;
     padding: 3px 12px;
     cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+  }
+  button:hover:not(:disabled) {
+    border-color: var(--bd-ember);
   }
   button:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
   .err {
-    color: #e0866f;
+    color: var(--bad);
     font-size: 12px;
-    margin: 0;
+    margin: 8px 16px;
   }
 </style>

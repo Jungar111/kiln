@@ -48,30 +48,61 @@
   );
 </script>
 
-<div class="plot-panel">
-  {#if chosen === null}
-    <p class="empty">No plot for the last cell.</p>
-  {:else if chosen.mime === 'image/png'}
-    <img class="raster" src={`data:image/png;base64,${chosen.payload}`} alt="plot" />
-  {:else if svgSrc !== null}
-    <img class="raster" src={svgSrc} alt="plot" />
-  {:else if chosen.mime === 'text/html'}
-    <!-- sandbox without allow-same-origin: plotly's scripts run isolated and
-         cannot reach window.top / the parent document. -->
-    <iframe class="html" sandbox="allow-scripts" srcdoc={chosen.payload} title="plot"></iframe>
-  {:else}
-    <pre class="text">{chosen.payload}</pre>
-  {/if}
+<div class="plot-tab">
+  <div class="bar">
+    <span class="ember">Plots</span>
+    <span class="muted">display_data · {chosen?.mime ?? 'image/png'} intercepted from kernel</span>
+  </div>
+  <div class="plot-panel">
+    {#if chosen === null}
+      <p class="empty">No plot for the last cell.</p>
+    {:else if chosen.mime === 'image/png'}
+      <img class="raster" src={`data:image/png;base64,${chosen.payload}`} alt="plot" />
+    {:else if svgSrc !== null}
+      <img class="raster" src={svgSrc} alt="plot" />
+    {:else if chosen.mime === 'text/html'}
+      <!-- sandbox without allow-same-origin: plotly's scripts run isolated and
+           cannot reach window.top / the parent document. -->
+      <iframe class="html" sandbox="allow-scripts" srcdoc={chosen.payload} title="plot"></iframe>
+    {:else}
+      <pre class="text">{chosen.payload}</pre>
+    {/if}
+  </div>
 </div>
 
 <style>
-  .plot-panel {
+  .plot-tab {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    background: #0f0f0f;
-    border-radius: 8px;
+  }
+  .bar {
+    height: 32px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--bd-row);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+  }
+  .ember {
+    color: var(--ember-soft);
+  }
+  .muted {
+    color: var(--tx-mut);
+  }
+  .plot-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin: 14px 16px;
+    background: var(--bg-panel);
+    border: 1px solid var(--bd);
+    border-radius: 7px;
     overflow: hidden;
   }
   .raster {
@@ -93,13 +124,14 @@
     padding: 12px;
     white-space: pre-wrap;
     word-break: break-word;
+    font-family: var(--font-mono);
     font-size: 12px;
-    color: #ddd;
+    color: var(--tx);
     overflow: auto;
   }
   .empty {
     margin: auto;
-    color: #777;
+    color: var(--tx-mut);
     font-size: 13px;
   }
 </style>

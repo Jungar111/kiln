@@ -8,11 +8,12 @@
   const open = $derived(drifted || slot.severity !== 'fyi');
 </script>
 
-<details class="slot severity-{slot.severity}" class:drifted {open}>
+<details class="slot sev-{slot.severity}" class:drifted {open}>
   <summary>
+    <span class="bullet"></span>
     <span class="name">{label}</span>
     <span class="badge">{slot.severity}</span>
-    {#if drifted}<span class="drift-badge">drift</span>{/if}
+    {#if drifted}<span class="badge drift">⚑ drift</span>{/if}
     {#if !slot.in_scope}<span class="oos">out of scope</span>{/if}
   </summary>
   <p class="answer">{slot.answer}</p>
@@ -20,61 +21,110 @@
 
 <style>
   .slot {
-    border-left: 3px solid #444;
-    padding: 6px 10px;
-    background: #1a1a1a;
-    border-radius: 4px;
-  }
-  .severity-critical {
-    border-left-color: #e0563f;
-  }
-  .severity-notable {
-    border-left-color: #d9a441;
-  }
-  .severity-fyi {
-    border-left-color: #555;
-    opacity: 0.85;
-  }
-  .slot.drifted {
-    border-left-color: #b3372a;
-    background: rgba(224, 86, 63, 0.1);
-    opacity: 1;
-  }
-  .drift-badge {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: #b3372a;
-    color: #ffd9d2;
-    font-weight: 700;
+    display: block;
+    padding: 12px 13px;
+    background: var(--bg-panel-2);
+    border: 1px solid var(--bd-soft);
+    border-radius: 7px;
   }
   summary {
+    list-style: none;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 8px;
   }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  .bullet {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
   .name {
+    color: var(--tx-bright);
     font-weight: 600;
+    font-size: 12.5px;
   }
   .badge {
-    font-size: 10px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.6px;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: #2a2a2a;
-    color: #bbb;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid;
   }
   .oos {
-    font-size: 11px;
-    color: #888;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--tx-mut2);
   }
   .answer {
-    margin: 6px 0 0;
-    color: #ddd;
+    margin: 6px 0 0 17px;
+    color: var(--tx-dim);
     white-space: pre-wrap;
+  }
+
+  /* critical */
+  .sev-critical {
+    background: #1d1712;
+    border-color: #3a2a1a;
+  }
+  .sev-critical .bullet {
+    background: var(--bad);
+    box-shadow: 0 0 8px -1px var(--bad);
+  }
+  .sev-critical .badge {
+    color: var(--bad);
+    border-color: #5a2a22;
+  }
+
+  /* notable */
+  .sev-notable .bullet {
+    background: var(--warn);
+  }
+  .sev-notable .badge {
+    color: var(--warn);
+    border-color: #5a4a22;
+  }
+
+  /* fyi */
+  .sev-fyi {
+    background: transparent;
+    border-color: transparent;
+    padding: 9px 13px;
+  }
+  .sev-fyi .bullet {
+    background: transparent;
+    border: 1px solid var(--info);
+  }
+  .sev-fyi .name {
+    color: var(--tx-mut);
+    font-weight: 500;
+  }
+  .sev-fyi .badge {
+    color: var(--info);
+    border-color: #36434f;
+  }
+  .sev-fyi .answer {
+    color: var(--tx-dim2);
+    font-size: 11.5px;
+  }
+
+  /* drift override — the loudest state */
+  .slot.drifted {
+    background: var(--bg-flag);
+    border-color: var(--bd-bad);
+  }
+  .slot.drifted .bullet {
+    background: var(--bad);
+    box-shadow: 0 0 8px -1px var(--bad);
+  }
+  .badge.drift {
+    color: var(--bad-bright);
+    border-color: var(--bd-bad);
   }
 </style>

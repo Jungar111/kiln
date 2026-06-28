@@ -85,15 +85,16 @@
 
 <style>
   .inspect {
-    border: 1px solid #333;
+    border: 1px solid var(--bd-2);
     border-radius: 8px;
     padding: 8px 12px;
-    background: #141414;
+    background: var(--bg-input);
   }
   summary {
     cursor: pointer;
-    color: #bbb;
-    font-size: 13px;
+    color: var(--tx-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
   ol {
     list-style: none;
@@ -106,23 +107,25 @@
     overflow: auto;
   }
   li {
-    border-left: 2px solid #2a2a2a;
+    border-left: 2px solid var(--bd);
     padding-left: 8px;
   }
   pre {
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
+    font-family: var(--font-mono);
     font-size: 12px;
+    color: var(--tx);
   }
   .in {
-    color: #9ad;
+    color: var(--info);
   }
   .value {
-    color: #ddd;
+    color: var(--ember-soft);
   }
   .error {
-    color: #e0a4a4;
+    color: var(--bad);
   }
   form {
     display: flex;
@@ -130,12 +133,17 @@
   }
   input {
     flex: 1;
-    background: #1a1a1a;
-    color: #e6e6e6;
-    border: 1px solid #333;
+    background: var(--bg-repl);
+    color: var(--tx-3);
+    border: 1px solid var(--bd-2);
     border-radius: 6px;
     padding: 6px 8px;
-    font: inherit;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  input:focus {
+    outline: none;
+    border-color: var(--bd-ember);
   }
   input:disabled {
     opacity: 0.6;
@@ -146,8 +154,9 @@
     padding: 6px 14px;
     cursor: pointer;
     font: inherit;
-    background: #2a2a2a;
-    color: #ddd;
+    font-size: 11px;
+    background: var(--bg-panel-2);
+    color: var(--tx-2);
   }
   button:disabled {
     cursor: not-allowed;
@@ -155,10 +164,11 @@
   }
   .hint {
     margin: 8px 0 0;
-    font-size: 11px;
-    color: #888;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--tx-mut2);
   }
   .hint code {
-    color: #9ad;
+    color: var(--info);
   }
 </style>

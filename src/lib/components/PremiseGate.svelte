@@ -4,6 +4,7 @@
     slotLabel,
     type DriftEntry,
     type ProposeExperiment,
+    type Severity,
   } from '$lib/checkpoint-types';
   import SlotRow from './SlotRow.svelte';
   import InspectionRepl from './InspectionRepl.svelte';
@@ -21,28 +22,40 @@
     ondecline: () => void;
   } = $props();
 
-  // Which slot keys drifted, so the matching SlotRow can flag itself.
   const driftedKeys = $derived(new Set(drift.map((d) => d.slot)));
+
+  // Severity descending — the heavy review point puts the riskiest decisions first.
+  const RANK: Record<Severity, number> = { critical: 0, notable: 1, fyi: 2 };
+  const rows = $derived(
+    [...SLOT_FIELDS]
+      .map(([key, label]) => ({ key, label, slot: proposal[key] }))
+      .sort((a, b) => RANK[a.slot.severity] - RANK[b.slot.severity]),
+  );
+
+  const inScope = $derived(rows.filter((r) => r.slot.in_scope));
+  const filled = $derived(inScope.filter((r) => r.slot.answer.trim() !== '').length);
 </script>
 
-<div class="backdrop">
-  <div
-    class="gate"
-    class:drifted={drift.length > 0}
-    role="dialog"
-    aria-modal="true"
-    aria-label="Premise gate"
-  >
-    <header>
-      {#if drift.length > 0}<span class="drift-flag">Drift</span>{/if}
-      <h2>{proposal.title}</h2>
-      <p class="premise">{proposal.premise}</p>
-    </header>
+<div class="gate" class:drifted={drift.length > 0}>
+  <div class="scroll">
+    <!-- header -->
+    <div class="head">
+      <div class="head-main">
+        <div class="eyebrow">Premise gate · pre-compute</div>
+        <h1 class="title">{proposal.title}</h1>
+        <p class="premise">
+          {proposal.premise} You certify the <span class="hi">design decisions</span>, not every
+          line. Approval writes these as tags on the MLflow run.
+        </p>
+      </div>
+      <div class="counter">{filled} / {inScope.length} in-scope slots filled</div>
+    </div>
 
     {#if drift.length > 0}
-      <div class="drift-banner" role="alert">
-        <strong>Drift detected</strong>
-        <p>A locked decision would change. Re-confirm the frame before proceeding.</p>
+      <div class="drift" role="alert">
+        <div class="drift-title">
+          ⚑ Drift — a locked decision would change. Re-confirm the frame.
+        </div>
         <ul>
           {#each drift as entry (entry.slot)}
             <li>
@@ -57,167 +70,255 @@
     {/if}
 
     {#if proposal.look_here.length > 0}
-      <div class="look-here">
-        <strong>Look here</strong>
-        <ul>
+      <div class="look">
+        <div class="look-eye">👁</div>
+        <div>
+          <div class="look-title">Look here — where I'm least sure</div>
           {#each proposal.look_here as item (item)}
-            <li>{item}</li>
+            <div class="look-item">{item}</div>
           {/each}
-        </ul>
+        </div>
       </div>
     {/if}
 
+    <!-- decisions -->
+    <div class="sec">
+      <span class="sec-label">Frame decisions · leakage &amp; validity checklist</span>
+      <span class="rule"></span>
+      <span class="sec-hint">severity ↓</span>
+    </div>
+
     <div class="slots">
-      {#each SLOT_FIELDS as [key, label] (key)}
-        <SlotRow {label} slot={proposal[key]} drifted={driftedKeys.has(key)} />
+      {#each rows as row (row.key)}
+        <SlotRow label={row.label} slot={row.slot} drifted={driftedKeys.has(row.key)} />
       {/each}
     </div>
 
     <!-- The instrument of the review: poke the idle kernel before deciding. The
          REPL lives on this component, so declining/approving discards its session. -->
     <InspectionRepl />
+  </div>
 
-    <footer>
-      <!-- Real CodeView lands in Phase 5; placeholder for now. -->
-      <button type="button" class="ghost" disabled>show experiment code</button>
-      <div class="spacer"></div>
-      <button type="button" class="decline" onclick={ondecline}>decline</button>
+  <!-- decision bar -->
+  <footer>
+    <div class="hints">
+      <span>▸ expand experiment code</span>
+      <span class="dot-sep">·</span>
+      <span>⌘K poke the kernel</span>
+    </div>
+    <div class="actions">
+      <button type="button" class="ghost" onclick={ondecline}>Request changes</button>
       <button
         type="button"
         class="approve"
         onclick={() => {
           onapprove(proposal);
-        }}>approve</button
+        }}>Approve premise →</button
       >
-    </footer>
-  </div>
+    </div>
+  </footer>
 </div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: grid;
-    place-items: center;
-    z-index: 10;
-  }
   .gate {
-    width: min(680px, 92vw);
-    max-height: 88vh;
-    overflow: auto;
-    background: #161616;
-    color: #e6e6e6;
-    border: 1px solid #333;
-    border-radius: 10px;
-    padding: 20px;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
+  }
+  .scroll {
+    flex: 1;
+    overflow: auto;
+    padding: 18px 22px 0;
+  }
+
+  .head {
+    display: flex;
+    align-items: flex-start;
     gap: 14px;
   }
-  .gate.drifted {
-    border-color: #b3372a;
-    box-shadow: 0 0 0 1px rgba(224, 86, 63, 0.4);
+  .head-main {
+    flex: 1;
   }
-  h2 {
-    margin: 0 0 4px;
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--tx-mut);
+  }
+  .title {
+    font-family: var(--font-serif);
+    font-size: 25px;
+    font-weight: 500;
+    color: var(--tx-title);
+    margin: 5px 0 0;
+    line-height: 1.2;
   }
   .premise {
-    margin: 0;
-    color: #bbb;
+    margin: 6px 0 0;
+    color: var(--tx-dim);
+    max-width: 560px;
   }
-  .drift-flag {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #ffd9d2;
-    background: #b3372a;
-    padding: 2px 8px;
-    border-radius: 999px;
-    margin-bottom: 6px;
+  .hi {
+    color: var(--tx-3);
   }
-  .drift-banner {
-    border: 1px solid #b3372a;
-    background: rgba(224, 86, 63, 0.12);
+  .counter {
+    flex-shrink: 0;
+    background: var(--bg-sel);
+    border: 1px solid var(--bd-ember);
+    color: var(--ember-soft);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 5px 9px;
+    border-radius: 5px;
+  }
+
+  .drift {
+    margin-top: 14px;
+    background: var(--bg-flag);
+    border: 1px solid var(--bd-bad);
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 11px 14px;
   }
-  .drift-banner > p {
-    margin: 4px 0 0;
-    color: #e8c4bd;
+  .drift-title {
+    color: var(--bad-bright);
+    font-weight: 600;
+    font-size: 12px;
   }
-  .drift-banner ul {
+  .drift ul {
     margin: 8px 0 0;
-    padding-left: 0;
+    padding: 0;
     list-style: none;
     display: flex;
     flex-direction: column;
     gap: 4px;
   }
-  .drift-banner li {
+  .drift li {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
     gap: 6px;
-    font-size: 13px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
   }
   .drift-slot {
-    font-weight: 600;
+    color: var(--tx-2);
   }
   .drift-old {
-    color: #c99;
+    color: var(--tx-mut);
     text-decoration: line-through;
   }
   .drift-arrow {
-    color: #888;
+    color: var(--tx-mut2);
   }
   .drift-new {
-    color: #eafff2;
+    color: var(--good);
   }
-  .look-here {
-    border: 1px solid #e0563f;
-    background: rgba(224, 86, 63, 0.08);
-    border-radius: 8px;
-    padding: 8px 12px;
-  }
-  .look-here ul {
-    margin: 6px 0 0;
-    padding-left: 18px;
-  }
-  .slots {
+
+  .look {
+    margin-top: 16px;
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    gap: 11px;
+    padding: 12px 14px;
+    background: var(--bg-look);
+    border: 1px solid var(--bd-ember);
+    border-radius: 8px;
   }
-  footer {
+  .look-eye {
+    font-size: 15px;
+    line-height: 1;
+  }
+  .look-title {
+    color: var(--ember-soft);
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .look-item {
+    color: var(--tx-2);
+    margin-top: 3px;
+    max-width: 600px;
+  }
+
+  .sec {
+    margin-top: 18px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 4px;
+    gap: 10px;
   }
-  .spacer {
+  .sec-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--tx-mut);
+  }
+  .rule {
     flex: 1;
+    height: 1px;
+    background: var(--bd);
+  }
+  .sec-hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--tx-mut2);
+  }
+  .slots {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: 14px;
+  }
+
+  footer {
+    flex-shrink: 0;
+    border-top: 1px solid var(--bd);
+    background: var(--bg-panel);
+    padding: 12px 22px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .hints {
+    display: flex;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--tx-mut);
+  }
+  .dot-sep {
+    color: var(--tx-mut3);
+  }
+  .actions {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
   }
   button {
     border: none;
     border-radius: 6px;
-    padding: 8px 16px;
     cursor: pointer;
     font: inherit;
   }
   .ghost {
-    background: #222;
-    color: #888;
-    cursor: not-allowed;
+    font-size: 12px;
+    color: var(--tx-2);
+    background: transparent;
+    border: 1px solid #3a3630;
+    padding: 8px 16px;
   }
-  .decline {
-    background: #3a2a2a;
-    color: #e6b0a4;
+  .ghost:hover {
+    border-color: var(--tx-mut);
   }
   .approve {
-    background: #2e6f4e;
-    color: #eafff2;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #1a1208;
+    background: var(--ember-grad);
+    padding: 9px 20px;
+    box-shadow: 0 6px 18px -6px var(--ember);
+  }
+  .approve:hover {
+    filter: brightness(1.05);
   }
 </style>
