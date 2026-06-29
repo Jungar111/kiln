@@ -15,30 +15,6 @@ pub fn run() {
         .manage(checkpoint::DriftState::default())
         .manage(claude::ClaudeSession::default())
         .setup(|app| {
-            // macOS: Tauri's window backgroundColor paints the webview, but the
-            // transparent titlebar strip shows the NSWindow's own background —
-            // still the system default (white), the bar under the traffic lights.
-            // Paint the NSWindow itself to match --bg (#161513 = 22,21,19).
-            #[cfg(target_os = "macos")]
-            {
-                use objc2_app_kit::{NSColor, NSWindow};
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Ok(ptr) = window.ns_window() {
-                        // SAFETY: ns_window() returns the live NSWindow pointer;
-                        // setup runs on the main thread, where AppKit requires
-                        // window access to happen.
-                        let ns_window: &NSWindow = unsafe { &*ptr.cast::<NSWindow>() };
-                        let bg = NSColor::colorWithRed_green_blue_alpha(
-                            22.0 / 255.0,
-                            21.0 / 255.0,
-                            19.0 / 255.0,
-                            1.0,
-                        );
-                        ns_window.setBackgroundColor(Some(&*bg));
-                    }
-                }
-            }
-
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 // Notify the webview that we are about to spawn the sidecar.

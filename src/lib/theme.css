@@ -62,8 +62,12 @@
   --font-serif: 'Newsreader', Georgia, serif;
 }
 
-:global(html),
-:global(body) {
+/* Plain global stylesheet: use real selectors. `:global()` is a Svelte-only
+   construct — in a .css file the browser treats it as an unknown pseudo-class
+   and drops the whole rule (which silently lost margin:0, the bg, and
+   box-sizing, leaving a default 8px body margin = white frame + window scroll). */
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -74,7 +78,7 @@
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-:global(*) {
+* {
   box-sizing: border-box;
 }
 
