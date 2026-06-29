@@ -3,7 +3,8 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use serde::Deserialize;
-use tokio::io::AsyncWriteExt as _;
+use tauri::{AppHandle, Emitter as _};
+use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::process::Command;
 
 use crate::checkpoint::ProposeExperiment;
@@ -70,15 +71,41 @@ struct Reply {
     session_id: Option<String>,
 }
 
+/// One newline-delimited object from `--output-format stream-json`. We only need
+/// the type tag and, for `stream_event`, the nested event payload.
+#[derive(Debug, Deserialize)]
+struct StreamLine {
+    #[serde(rename = "type")]
+    kind: String,
+    event: Option<serde_json::Value>,
+}
+
+/// Pull the incremental text out of a `content_block_delta` / `text_delta`
+/// stream event; `None` for any other event (tool use, thinking, start/stop).
+fn delta_text(event: &serde_json::Value) -> Option<&str> {
+    if event.get("type")?.as_str()? != "content_block_delta" {
+        return None;
+    }
+    let delta = event.get("delta")?;
+    if delta.get("type")?.as_str()? != "text_delta" {
+        return None;
+    }
+    delta.get("text")?.as_str()
+}
+
 /// Run one Claude Code turn, continuing `session` so the conversation persists.
 ///
 /// We shell out to the `claude` CLI (`-p --output-format json`) instead of the
 /// raw Anthropic API: auth, tools, MCP, and project context all come for free
 /// from the user's existing Claude Code install. The prompt is piped over stdin
 /// so a message that looks like a flag (e.g. "--continue") can't be misparsed.
-pub async fn send(prompt: &str, session: &ClaudeSession) -> Result<String, String> {
+pub async fn send(
+    prompt: &str,
+    session: &ClaudeSession,
+    app: &AppHandle,
+) -> Result<String, String> {
     let resume = session.current();
-    let reply = tokio::time::timeout(TIMEOUT, run(prompt, resume.as_deref()))
+    let reply = tokio::time::timeout(TIMEOUT, run(prompt, resume.as_deref(), app))
         .await
         .map_err(|_| format!("claude timed out after {}s", TIMEOUT.as_secs()))??;
     if let Some(id) = reply.session_id {
@@ -87,12 +114,14 @@ pub async fn send(prompt: &str, session: &ClaudeSession) -> Result<String, Strin
     Ok(reply.text)
 }
 
-async fn run(prompt: &str, resume: Option<&str>) -> Result<Reply, String> {
+async fn run(prompt: &str, resume: Option<&str>, app: &AppHandle) -> Result<Reply, String> {
     let mut command = Command::new("claude");
     command
         .arg("-p")
         .arg("--output-format")
-        .arg("json")
+        .arg("stream-json")
+        .arg("--verbose")
+        .arg("--include-partial-messages")
         .arg("--append-system-prompt")
         .arg(KILN_SYSTEM_PROMPT);
     if let Some(id) = resume {
@@ -114,21 +143,52 @@ async fn run(prompt: &str, resume: Option<&str>) -> Result<Reply, String> {
         .await
         .map_err(|e| format!("failed to send prompt to claude: {e}"))?;
 
-    let output = child
-        .wait_with_output()
+    // Stream stdout line by line: forward text deltas to the webview as they
+    // arrive, and capture the terminal `result` object (full text + session id).
+    let stdout = child.stdout.take().expect("stdout is piped");
+    let mut lines = tokio::io::BufReader::new(stdout).lines();
+    let mut reply: Option<Reply> = None;
+    while let Some(line) = lines
+        .next_line()
+        .await
+        .map_err(|e| format!("reading claude stream: {e}"))?
+    {
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<StreamLine>(&line) else {
+            continue;
+        };
+        match event.kind.as_str() {
+            "stream_event" => {
+                if let Some(text) = event.event.as_ref().and_then(delta_text) {
+                    let _ = app.emit("chat:delta", text);
+                }
+            }
+            "result" => reply = Some(parse_output(line.as_bytes())?),
+            _ => {}
+        }
+    }
+
+    // ponytail: drain stderr after stdout EOF; claude's stderr is tiny, so this
+    // can't deadlock the way a mid-stream read could.
+    let mut stderr_buf = String::new();
+    if let Some(mut stderr) = child.stderr.take() {
+        let _ = stderr.read_to_string(&mut stderr_buf).await;
+    }
+    let status = child
+        .wait()
         .await
         .map_err(|e| format!("claude failed: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if !status.success() {
         return Err(format!(
             "claude exited with {}: {}",
-            output.status,
-            stderr.trim()
+            status,
+            stderr_buf.trim()
         ));
     }
 
-    parse_output(&output.stdout)
+    reply.ok_or_else(|| "claude produced no result".to_owned())
 }
 
 /// Extract the text reply + session id from `claude --output-format json` stdout.
