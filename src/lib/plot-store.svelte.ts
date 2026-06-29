@@ -1,6 +1,6 @@
 /**
- * Holds the rich MIME displays (matplotlib PNG, plotly HTML, …) for the most
- * recently executed cell, so the Plot tab can render them.
+ * Holds the rich MIME displays (matplotlib PNG, plotly HTML, …) for every
+ * executed cell that produced any, so the Plot tab can render the full history.
  *
  * Two feed paths, both supported so the integrator can wire whichever fits:
  *
@@ -25,12 +25,12 @@ export type Display = {
 };
 
 export type PlotStore = {
-  /** Displays from the latest cell that produced any (cleared = empty array). */
-  readonly displays: readonly Display[];
-  /** Feed displays directly from an ExecuteResponse. Empty arrays are ignored
-   *  so a plain `x = 1` cell does not blank out the last plot. */
+  /** One entry per executed cell that produced displays, oldest → newest. */
+  readonly history: readonly (readonly Display[])[];
+  /** Append the displays from an ExecuteResponse. Empty arrays are ignored so a
+   *  plain `x = 1` cell does not add a blank history entry. */
   setDisplays(displays: readonly Display[]): void;
-  /** Drop the current displays (e.g. when a gate is declined / the run resets). */
+  /** Drop the whole history (e.g. when a gate is declined / the run resets). */
   clear(): void;
 };
 
@@ -42,12 +42,12 @@ function isDisplay(value: unknown): value is Display {
 }
 
 export function createPlotStore(): PlotStore {
-  let displays = $state<readonly Display[]>([]);
+  let history = $state<readonly (readonly Display[])[]>([]);
 
   function setDisplays(next: readonly Display[]): void {
-    // Ignore display-less cells: keep showing the last real plot rather than
-    // flashing empty every time a non-plotting cell runs.
-    if (next.length > 0) displays = next;
+    // Append, don't replace: every plotting cell keeps its own entry so the
+    // Plot tab is a history. Display-less cells are ignored (no blank entry).
+    if (next.length > 0) history = [...history, next];
   }
 
   // listen() returns a Promise<UnlistenFn>; we deliberately don't await it in
@@ -60,12 +60,12 @@ export function createPlotStore(): PlotStore {
   });
 
   return {
-    get displays() {
-      return displays;
+    get history() {
+      return history;
     },
     setDisplays,
     clear() {
-      displays = [];
+      history = [];
     },
   };
 }

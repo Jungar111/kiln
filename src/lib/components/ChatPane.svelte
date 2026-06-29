@@ -50,7 +50,7 @@
   <form onsubmit={(event) => void submit(event)}>
     <div class="box">
       <textarea bind:value={draft} {onkeydown} placeholder="Direct Claude…"></textarea>
-      <button type="submit" aria-label="Send">↑</button>
+      <button type="submit" class:active={draft.trim() !== ''} aria-label="Send">↑</button>
     </div>
   </form>
 </div>
@@ -189,5 +189,13 @@
   }
   button:hover {
     color: var(--tx-bright);
+  }
+  button.active {
+    background: var(--ember);
+    color: #1a1208;
+  }
+  button.active:hover {
+    background: var(--ember-soft);
+    color: #1a1208;
   }
 </style>

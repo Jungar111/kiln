@@ -10,8 +10,8 @@
   import { createSidecarStatus } from '$lib/sidecar-status.svelte';
   import { createCheckpointStore } from '$lib/checkpoint-store.svelte';
   import { createRunsStore, type Run } from '$lib/runs-store.svelte';
-  import { dfStore } from '$lib/df-store.svelte';
-  import { plotStore } from '$lib/plot-store.svelte';
+  import { dfStore, type DfHandle } from '$lib/df-store.svelte';
+  import { plotStore, type Display } from '$lib/plot-store.svelte';
   import { chat } from '$lib/chat-store.svelte';
   import { toMessage } from '$lib/errors';
   import type { ProposeExperiment, Verdict } from '$lib/checkpoint-types';
@@ -115,16 +115,52 @@
   });
 
   void loadRuns();
+
+  // Inline ephemeral REPL strip — pokes the live kernel without logging to the
+  // run. Mirrors InspectionRepl's submit; df/plots route to their tabs, the last
+  // value/error shows inline (full text on hover).
+  type ExecuteResponse = {
+    readonly stdout: string;
+    readonly value: string | null;
+    readonly traceback: string | null;
+    readonly df: DfHandle | null;
+    readonly displays: readonly Display[];
+  };
+  let replDraft = $state('');
+  let replRunning = $state(false);
+  let replOut = $state('');
+  let replErr = $state(false);
+
+  async function runPoke(): Promise<void> {
+    const code = replDraft.trim();
+    if (code === '' || replRunning || status.value !== 'ready') return;
+    replRunning = true;
+    try {
+      const r = await invoke<ExecuteResponse>('execute', { code, ephemeral: true });
+      if (r.df !== null) dfStore.set(r.df);
+      plotStore.setDisplays(r.displays);
+      replErr = r.traceback !== null;
+      replOut = r.traceback ?? r.value ?? r.stdout.trim();
+      replDraft = '';
+    } catch (err) {
+      replErr = true;
+      replOut = toMessage(err);
+    } finally {
+      replRunning = false;
+    }
+  }
+
+  function replKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void runPoke();
+    }
+  }
 </script>
 
 <div class="window">
-  <!-- ===== titlebar ===== -->
-  <div class="titlebar">
-    <div class="lights">
-      <span style="background:#ff5f57"></span>
-      <span style="background:#febc2e"></span>
-      <span style="background:#28c840"></span>
-    </div>
+  <!-- ===== titlebar (native traffic lights overlay the left via titleBarStyle:Transparent) ===== -->
+  <div class="titlebar" data-tauri-drag-region>
     <div class="title">{PROJECT} — <span class="brand">kiln</span></div>
     <div class="env">py 3.12 · uv · mlflow</div>
   </div>
@@ -241,8 +277,12 @@
             </div>
           {/if}
         {:else if tab === 'plots'}
-          {#if plotStore.displays.length > 0}
-            <PlotPanel displays={plotStore.displays} />
+          {#if plotStore.history.length > 0}
+            <div class="plot-history">
+              {#each plotStore.history as displays, i (i)}
+                <div class="plot-entry"><PlotPanel {displays} /></div>
+              {/each}
+            </div>
           {:else}
             <div class="empty">
               <div class="empty-eyebrow">Plots · display_data</div>
@@ -283,11 +323,24 @@
       <!-- repl strip -->
       <div class="repl">
         <span class="dot" style="background:{kernel.dot}"></span>
-        <span class="repl-state">{status.value === 'ready' ? 'idle' : status.value}</span>
-        <span class="repl-sep">ns:</span>
-        {#if dfStore.current}<span class="repl-var">df</span>{/if}
-        <span class="repl-prompt">In [·]:</span><span class="kcursor"></span>
-        <span class="repl-hint">⌘↵ run · pokes are ephemeral</span>
+        <span class="repl-state"
+          >{replRunning ? 'running' : status.value === 'ready' ? 'idle' : status.value}</span
+        >
+        <span class="repl-prompt">In [·]:</span>
+        <input
+          class="repl-input"
+          bind:value={replDraft}
+          onkeydown={replKeydown}
+          disabled={status.value !== 'ready' || replRunning}
+          placeholder="poke the kernel — ephemeral"
+          spellcheck="false"
+          autocapitalize="off"
+          autocomplete="off"
+        />
+        {#if replOut}
+          <span class="repl-out" class:err={replErr} title={replOut}>{replOut}</span>
+        {/if}
+        <span class="repl-hint">↵ run · ephemeral</span>
       </div>
     </main>
 
@@ -318,14 +371,9 @@
     padding: 0 14px;
     position: relative;
   }
-  .lights {
-    display: flex;
-    gap: 8px;
-  }
-  .lights span {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
+  /* clear the macOS traffic lights that now overlay the left of this bar */
+  .titlebar {
+    padding-left: 78px;
   }
   .title {
     position: absolute;
@@ -571,6 +619,20 @@
     overflow: auto;
     padding: 18px 22px;
   }
+
+  /* Plot tab is a scrollable history; bound each entry so PlotPanel
+     (height:100%) stacks instead of every panel claiming the viewport. */
+  .plot-history {
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .plot-entry {
+    flex: 0 0 auto;
+    height: 380px;
+  }
   .gate-head .eyebrow {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -627,25 +689,38 @@
   .repl-state {
     color: var(--good);
   }
-  .repl-sep {
-    color: var(--tx-mut3);
-  }
-  .repl-var {
-    color: var(--tx-dim);
-  }
   .repl-prompt {
     color: var(--tx-mut3);
     margin-left: 4px;
   }
-  .kcursor {
-    display: inline-block;
-    width: 7px;
-    height: 15px;
-    background: var(--ember);
-    animation: kblink 1.1s step-end infinite;
+  .repl-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--tx-3);
+    caret-color: var(--ember);
+    font: inherit;
+  }
+  .repl-input::placeholder {
+    color: var(--tx-mut3);
+  }
+  .repl-input:disabled {
+    opacity: 0.6;
+  }
+  .repl-out {
+    max-width: 38%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ember-soft);
+  }
+  .repl-out.err {
+    color: var(--bad);
   }
   .repl-hint {
-    margin-left: auto;
     color: var(--tx-mut3);
+    flex-shrink: 0;
   }
 </style>
