@@ -4,6 +4,10 @@ use tauri::{AppHandle, Emitter as _, State};
 use crate::checkpoint::{DriftEntry, DriftState, ProposeExperiment};
 use crate::sidecar_client::{ExecuteResponse, SidecarClient};
 
+/// Max kiln-run execute → feed-back rounds per chat turn. Bounds runaway loops
+/// and the number of `claude` subprocess calls a single message can trigger.
+const MAX_RUN_ROUNDS: usize = 3;
+
 /// Payload of the `checkpoint:proposed` event. `drift` lists the locked in-scope
 /// slots this proposal would change; empty for the first proposal of a run (no
 /// lock yet) or when nothing in the locked frame moved.
@@ -58,8 +62,37 @@ pub async fn chat(
     app: AppHandle,
     drift: State<'_, DriftState>,
     session: State<'_, crate::claude::ClaudeSession>,
+    client: State<'_, SidecarClient>,
 ) -> Result<String, String> {
-    let raw = crate::claude::send(&message, &session, &app).await?;
+    let mut raw = crate::claude::send(&message, &session, &app).await?;
+
+    // Agentic run loop: if Claude emits a `kiln-run` block, execute it in the live
+    // kernel, push any plots to the Plot tab, and feed the output back so it can
+    // report or fix-and-retry. Capped so a misbehaving turn can't loop forever.
+    // ponytail: cap = 3 rounds; raise it if real multi-step runs need more.
+    for _ in 0..MAX_RUN_ROUNDS {
+        let Some(code) = crate::claude::extract_run_block(&raw) else {
+            break;
+        };
+        let code = code.to_owned();
+        // ephemeral = true: chat-driven runs are exploration, excluded from autolog
+        // (matches the human-poke semantics). Approved experiment runs go elsewhere.
+        let feedback = match client.execute(&code, true).await {
+            Ok(result) => {
+                if !result.displays.is_empty() {
+                    let _ = app.emit("plot:displays", &result.displays);
+                }
+                format_kernel_output(&result)
+            }
+            Err(e) => format!(
+                "[Kiln kernel — the kiln-run code could not be executed ({}). Tell the human the \
+kernel is unavailable; do not give them terminal commands.]",
+                e.message
+            ),
+        };
+        raw = crate::claude::send(&feedback, &session, &app).await?;
+    }
+
     let prose = crate::claude::strip_proposal_block(&raw);
     match crate::claude::extract_proposal(&raw) {
         None => Ok(raw),
@@ -158,4 +191,79 @@ pub async fn arrow_port(client: State<'_, SidecarClient>) -> Result<u32, Execute
         code: e.code,
         message: e.message,
     })
+}
+
+/// Render a kernel result as a plain-text observation to feed back to Claude for
+/// the next turn. Framed so Claude treats it as tool output, not a human message,
+/// and can either report it or emit a corrected `kiln-run` block.
+fn format_kernel_output(r: &ExecuteResponse) -> String {
+    let mut out = String::from(
+        "[Kiln kernel — output of the kiln-run code you just executed. This is NOT a message \
+from the human. Report the result to the human, or if it errored emit a corrected `kiln-run` \
+block.]\n",
+    );
+    out.push_str(&format!("status: {}\n", r.status));
+    let stdout = r.stdout.trim_end();
+    if !stdout.is_empty() {
+        out.push_str(&format!("stdout:\n{stdout}\n"));
+    }
+    if let Some(value) = r.value.as_deref().filter(|v| !v.is_empty()) {
+        out.push_str(&format!("value: {value}\n"));
+    }
+    if let Some(traceback) = r.traceback.as_deref().filter(|t| !t.is_empty()) {
+        out.push_str(&format!("traceback:\n{traceback}\n"));
+    }
+    if !r.displays.is_empty() {
+        out.push_str("(a plot was rendered to the Plot tab)\n");
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_kernel_output;
+    use crate::sidecar_client::{Display, ExecuteResponse};
+
+    fn ok_response() -> ExecuteResponse {
+        ExecuteResponse {
+            status: "ok".to_owned(),
+            stdout: String::new(),
+            value: None,
+            traceback: None,
+            ephemeral: true,
+            df: None,
+            displays: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn reports_status_and_stdout_on_ok() {
+        let mut r = ok_response();
+        r.stdout = "3.14159\n".to_owned();
+        let out = format_kernel_output(&r);
+        assert!(out.contains("status: ok"), "got: {out}");
+        assert!(out.contains("3.14159"), "got: {out}");
+    }
+
+    #[test]
+    fn reports_traceback_on_error() {
+        let mut r = ok_response();
+        r.status = "error".to_owned();
+        r.traceback = Some("ZeroDivisionError: division by zero".to_owned());
+        let out = format_kernel_output(&r);
+        assert!(out.contains("status: error"), "got: {out}");
+        assert!(out.contains("ZeroDivisionError"), "got: {out}");
+    }
+
+    #[test]
+    fn notes_a_rendered_plot() {
+        let mut r = ok_response();
+        r.displays = vec![Display {
+            mime: "image/png".to_owned(),
+            payload: "AAAA".to_owned(),
+            metadata: serde_json::Value::Null,
+        }];
+        let out = format_kernel_output(&r);
+        assert!(out.to_lowercase().contains("plot"), "got: {out}");
+    }
 }

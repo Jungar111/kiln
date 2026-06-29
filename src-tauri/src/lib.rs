@@ -20,8 +20,14 @@ pub fn run() {
                 // Notify the webview that we are about to spawn the sidecar.
                 let _ = handle.emit("sidecar:starting", ());
 
-                let repo_root = std::env::current_dir().expect("cwd");
-                let mut sidecar = sidecar::Sidecar::spawn(&repo_root)
+                // `tauri dev` runs the binary with cwd = src-tauri/, so
+                // current_dir() can't find sidecar/. Anchor to the crate dir
+                // (compile-time) and take its parent — the repo root. Dev-harness
+                // only: `uv run` already needs the source tree on this machine.
+                let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("src-tauri always has a parent");
+                let mut sidecar = sidecar::Sidecar::spawn(repo_root)
                     .await
                     .expect("spawn sidecar");
 

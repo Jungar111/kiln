@@ -38,12 +38,25 @@ const TIMEOUT: Duration = Duration::from_secs(300);
 /// The fence tag Claude uses to hand a checkpoint proposal to the harness.
 const PROPOSAL_FENCE: &str = "```kiln-experiment";
 
+/// The fence tag Claude uses to ask the harness to run Python in the live kernel.
+const RUN_FENCE: &str = "```kiln-run";
+
 /// Appended to every turn so Claude knows the checkpoint convention. This is the
 /// CLI-native stand-in for an API tool schema (Ticket 30): instead of a tool
 /// call, Claude emits a fenced JSON block that `extract_proposal` picks up.
 // ponytail: prompt-driven contract; a real MCP `propose_experiment` tool is the
 // upgrade if/when prose-extraction proves too loose.
 const KILN_SYSTEM_PROMPT: &str = "\
+You run INSIDE Kiln, a desktop app with a LIVE Python kernel (numpy, pandas, \
+matplotlib, … already imported-on-demand) and Code/Result/Plot panes. You do NOT \
+have a usable terminal here: shell/Bash commands are sandboxed and fail, and the \
+human cannot paste code into a terminal. NEVER tell the human to run something \
+themselves, NEVER hand back a snippet to copy, and NEVER suggest `uv run`, python, \
+or shell commands. To run Python, emit exactly one fenced code block tagged \
+`kiln-run` containing the code — Kiln executes it in the live kernel, plots appear \
+in the Plot tab, and the cell's stdout, return value, and any error are returned to \
+you so you can report the result or fix and re-run. Use `kiln-run` whenever the \
+human asks you to plot, compute, run, load, or show anything.\n\n\
 You are running inside Kiln, which gates data-science experiments on a structured \
 premise review. ONLY when you are proposing a concrete experiment for the human to \
 review before running it, end your reply with exactly one fenced code block tagged \
@@ -209,15 +222,26 @@ fn parse_output(stdout: &[u8]) -> Result<Reply, String> {
     })
 }
 
-/// Pull the JSON body out of a ```` ```kiln-experiment ```` fenced block, if the
-/// reply contains one.
-fn extract_block(text: &str) -> Option<&str> {
-    let start = text.find(PROPOSAL_FENCE)? + PROPOSAL_FENCE.len();
+/// Pull the body out of the first fenced block tagged `fence` (e.g.
+/// ```` ```kiln-experiment ````), if the reply contains one.
+fn extract_fenced<'a>(text: &'a str, fence: &str) -> Option<&'a str> {
+    let start = text.find(fence)? + fence.len();
     let after_tag = &text[start..];
     let body_start = after_tag.find('\n')? + 1;
     let body = &after_tag[body_start..];
     let end = body.find("```")?;
     Some(body[..end].trim())
+}
+
+/// Pull the JSON body out of a ```` ```kiln-experiment ```` block, if present.
+fn extract_block(text: &str) -> Option<&str> {
+    extract_fenced(text, PROPOSAL_FENCE)
+}
+
+/// Pull the Python source out of a ```` ```kiln-run ```` block, if present. The
+/// harness runs it in the live kernel and feeds the output back to Claude.
+pub fn extract_run_block(text: &str) -> Option<&str> {
+    extract_fenced(text, RUN_FENCE)
 }
 
 /// If the reply proposes an experiment, parse and validate it:
@@ -254,7 +278,7 @@ pub fn strip_proposal_block(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_proposal, parse_output, strip_proposal_block};
+    use super::{extract_proposal, extract_run_block, parse_output, strip_proposal_block};
     use crate::checkpoint::SAMPLE_JSON;
 
     fn reply_with_proposal(json: &str) -> String {
@@ -311,5 +335,27 @@ mod tests {
     fn strip_removes_the_block() {
         let reply = reply_with_proposal(SAMPLE_JSON);
         assert_eq!(strip_proposal_block(&reply), "Here's what I propose.");
+    }
+
+    #[test]
+    fn extracts_run_code() {
+        let reply =
+            "Sure, plotting that now.\n\n```kiln-run\nimport numpy as np\nprint(np.pi)\n```";
+        assert_eq!(
+            extract_run_block(reply),
+            Some("import numpy as np\nprint(np.pi)")
+        );
+    }
+
+    #[test]
+    fn no_run_block_means_none() {
+        assert!(extract_run_block("just chatting, nothing to run").is_none());
+    }
+
+    #[test]
+    fn run_block_not_confused_with_experiment() {
+        // A kiln-experiment proposal is not a kiln-run block.
+        let reply = reply_with_proposal(SAMPLE_JSON);
+        assert!(extract_run_block(&reply).is_none());
     }
 }
