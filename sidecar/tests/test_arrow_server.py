@@ -30,6 +30,34 @@ def _post(port: int, path: str, body: dict[str, object]) -> http.client.HTTPResp
     return conn.getresponse()
 
 
+def test_preflight_allows_cross_origin(server: ArrowServer) -> None:
+    # The webview fetches cross-origin (localhost:1420 -> 127.0.0.1:port) with a
+    # JSON content-type, so the browser sends a CORS preflight first. Without a
+    # 2xx + Access-Control-Allow-Origin here, the real POST never fires and the
+    # df explorer shows "Load failed".
+    conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5.0)
+    conn.request(
+        "OPTIONS",
+        "/page",
+        headers={
+            "Origin": "http://localhost:1420",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    resp = conn.getresponse()
+    resp.read()
+    assert 200 <= resp.status < 300
+    assert resp.getheader("Access-Control-Allow-Origin") == "*"
+
+
+def test_post_response_carries_cors_header(server: ArrowServer) -> None:
+    handle = server.registry.register(pa.table({"x": [1]}))
+    resp = _post(server.port, "/page", {"handle": handle.id})
+    resp.read()
+    assert resp.getheader("Access-Control-Allow-Origin") == "*"
+
+
 def _post_table(port: int, path: str, body: dict[str, object]) -> pa.Table:
     resp = _post(port, path, body)
     assert resp.status == 200, resp.read()

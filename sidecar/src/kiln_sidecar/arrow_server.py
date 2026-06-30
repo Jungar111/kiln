@@ -63,6 +63,17 @@ def _make_handler(registry: FrameRegistry) -> type[BaseHTTPRequestHandler]:
             # `format` matches the base signature (BaseHTTPRequestHandler).
             del format, args
 
+        def do_OPTIONS(self) -> None:
+            # CORS preflight. The webview fetches cross-origin (localhost:1420 or
+            # tauri://localhost -> 127.0.0.1:port) with a JSON body, so the
+            # browser asks permission before the real POST. Loopback-only server,
+            # so any origin is fine.
+            self.send_response(204)
+            self._cors()
+            self.send_header("access-control-allow-methods", "POST, OPTIONS")
+            self.send_header("access-control-allow-headers", "content-type")
+            self.end_headers()
+
         def do_POST(self) -> None:
             length = int(self.headers.get("content-length", "0") or "0")
             raw = self.rfile.read(length)
@@ -98,8 +109,12 @@ def _make_handler(registry: FrameRegistry) -> type[BaseHTTPRequestHandler]:
             else:
                 self._fail(404, "not found")
 
+        def _cors(self) -> None:
+            self.send_header("access-control-allow-origin", "*")
+
         def _ok(self, payload: bytes) -> None:
             self.send_response(200)
+            self._cors()
             self.send_header("content-type", "application/vnd.apache.arrow.stream")
             self.send_header("content-length", str(len(payload)))
             self.end_headers()
@@ -108,6 +123,7 @@ def _make_handler(registry: FrameRegistry) -> type[BaseHTTPRequestHandler]:
         def _fail(self, code: int, message: str) -> None:
             body = message.encode("utf-8")
             self.send_response(code)
+            self._cors()
             self.send_header("content-type", "text/plain")
             self.send_header("content-length", str(len(body)))
             self.end_headers()
